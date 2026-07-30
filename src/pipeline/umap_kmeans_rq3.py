@@ -3,11 +3,11 @@ umap_kmeans_rq3_fast.py
 RQ3: UMAP + KMeans on scenario-level (merged) feature vectors.
 
 Default:
-- input:  datasets_dir/rq3_merged_feature_vectors_scenarios.csv
-- output: datasets_dir/rq3_out/
+- input:  outputs_dir/rq3_merged_feature_vectors_scenarios.csv
+- output: outputs_dir/rq3_out/
 
 Minimal usage:
-python umap_kmeans_rq3_fast.py --datasets_dir datasets
+python umap_kmeans_rq3_fast.py --outputs_dir outputs
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ def plot_silhouette(df_sil: pd.DataFrame, out_path: Path):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--datasets_dir", required=True, help="datasets/ folder")
-    ap.add_argument("--in", dest="inp", default=None, help="Merged CSV (default: datasets_dir/rq3_merged_feature_vectors_scenarios.csv)")
-    ap.add_argument("--out_dir", default=None, help="Output dir (default: datasets_dir/rq3_out)")
+    ap.add_argument("--outputs_dir", required=True, help="outputs/ folder")
+    ap.add_argument("--in", dest="inp", default=None, help="Merged CSV (default: outputs_dir/rq3_merged_feature_vectors_scenarios.csv)")
+    ap.add_argument("--out_dir", default=None, help="Output dir (default: outputs_dir/rq3_out)")
     ap.add_argument("--k_min", type=int, default=2)
     ap.add_argument("--k_max", type=int, default=10)
     ap.add_argument("--random_state", type=int, default=42)
@@ -80,12 +80,12 @@ def main():
     ap.add_argument("--umap_min_dist", type=float, default=0.1)
     args = ap.parse_args()
 
-    datasets_dir = Path(args.datasets_dir)
-    if not datasets_dir.exists():
-        raise FileNotFoundError(f"datasets_dir not found: {datasets_dir}")
+    outputs_dir = Path(args.outputs_dir)
+    if not outputs_dir.exists():
+        raise FileNotFoundError(f"outputs_dir not found: {outputs_dir}")
 
-    inp = Path(args.inp) if args.inp else (datasets_dir / "rq3_merged_feature_vectors_scenarios.csv")
-    out_dir = Path(args.out_dir) if args.out_dir else (datasets_dir / "rq3_out")
+    inp = Path(args.inp) if args.inp else (outputs_dir / "rq3_merged_feature_vectors_scenarios.csv")
+    out_dir = Path(args.out_dir) if args.out_dir else (outputs_dir / "rq3_out")
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"[INFO] Input merged: {inp.resolve()}", flush=True)

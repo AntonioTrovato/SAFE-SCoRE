@@ -17,7 +17,7 @@ def compute_scores():
     """
 
     # load dataset
-    df = pd.read_csv("../../datasets/full_dataset_with_clusters.csv")
+    df = pd.read_csv("../../outputs/full_dataset_with_clusters.csv")
 
     tools = list(df["tool"].unique())
     results = {}

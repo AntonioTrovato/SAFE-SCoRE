@@ -4,7 +4,7 @@ run_analysis.py
 Ad-hoc driver for the cross-tool research-question (RQ) analyses in
 src/analysis/. This is a scratch/example script, not a stable CLI - most
 analyses below are commented out; uncomment the ones you need and adjust
-the paths to your own datasets/ layout.
+the paths to your own outputs/ layout.
 
 Usage (from the repository root):
     python -m src.analysis.run_analysis
@@ -25,7 +25,7 @@ from analysis.rq2_event_percentage import RQ3EventPercentagesAnalyzer
 from analysis.rq4_driving_style_non_collision import RQ4DrivingStyleNonCollisionAnalyzer
 
 if __name__ == "__main__":
-    CSV_DIR = "./datasets"
+    CSV_DIR = "./outputs"
     OUT_DIR = "./src/analysis/results"
 
     pipe = AnalysisPipeline(csv_root_dir=CSV_DIR)
@@ -56,9 +56,9 @@ if __name__ == "__main__":
 
     # Part 3: Hazard percentage
     leaderboard_files = [
-        "./datasets/ScenarioFuzzLLM_metrics_sotif_hazard_leaderboard.csv",
-        "./datasets/SimADFuzz_metrics_sotif_hazard_leaderboard.csv",
-        "./datasets/TMFuzz_metrics_sotif_hazard_leaderboard.csv",
+        "./outputs/ScenarioFuzzLLM/sotif_hazard_leaderboard.csv",
+        "./outputs/SimADFuzz/sotif_hazard_leaderboard.csv",
+        "./outputs/TMFuzz/sotif_hazard_leaderboard.csv",
     ]
 
     # an = RQ3EventPercentagesAnalyzer(leaderboard_files=leaderboard_files)
@@ -78,7 +78,7 @@ if __name__ == "__main__":
 
     eff = pipe.run_efficiency_time_to_hazard(
         output_dir="analysis_outputs/efficiency",
-        logs_dir="./datasets/"  # folder containing the *_log_basic.json files
+        logs_dir="./outputs/"  # folder containing the *_log_basic.json files
     )
 
     print(eff.per_hazard_csv_path)

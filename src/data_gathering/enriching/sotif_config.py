@@ -20,7 +20,7 @@ DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[3] / "config" / "sotif_od
 def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
     cfg_path = Path(path) if path else DEFAULT_CONFIG_PATH
     if not cfg_path.exists():
-        raise FileNotFoundError(f"SOTIF ODD/TC config non trovato: {cfg_path}")
+        raise FileNotFoundError(f"SOTIF ODD/TC config not found: {cfg_path}")
     with cfg_path.open("r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
 

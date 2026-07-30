@@ -203,7 +203,7 @@ tool_name = "ExampleGenerator"
 generation_id = "gen_0001"
 scenario_id = "scenario_0001"
 run_index = 1
-output_dir = "datasets/ExampleGenerator"
+output_dir = "outputs/ExampleGenerator"
 
 # --------------------------------------------------
 # Instantiate logger
@@ -296,7 +296,7 @@ A tool may override this convention if needed, but the produced file must remain
 To simplify downstream processing, it is recommended to save logs directly inside the dataset folder associated with the generator, for example:
 
 ```text
-datasets/
+outputs/
 └── YourToolName/
     ├── gen_0001_sc_0001_log_basic.json
     ├── gen_0001_sc_0002_log_basic.json

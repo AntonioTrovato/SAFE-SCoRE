@@ -52,13 +52,14 @@ The project is organized as a single, end-to-end pipeline that goes from a suite
 
 **Stage 0 - Scenario execution (`src/runner/`).** Each `.scenic` scenario is executed on CARLA a configurable number of times (10 by default, as required by SOTIF's residual-risk-estimation guidance), producing one base-log JSON per run. The ego can either be driven by Scenic's own compiled driving behavior (default), or the runner can instead connect to a remote CARLA+Autoware service. See [Running the pipeline on a suite of scenarios](#running-the-pipeline-on-a-suite-of-scenarios) below.
 
-**Stage 1 - SOTIF enrichment (`src/pipeline/`, `src/data_gathering/enriching/`, `src/analysis/`).** For every dataset folder under `datasets/` (whether produced by Stage 0 or provided independently by an externally-integrated tool, see `docs/integration.md`), the pipeline performs:
+**Stage 1 - SOTIF enrichment (`src/pipeline/`, `src/data_gathering/enriching/`, `src/analysis/`).** For every dataset folder under `outputs/` (whether produced by Stage 0 or provided independently by an externally-integrated tool, see `docs/integration.md`), the pipeline performs:
 
 1. **Sanity check of base logs**
-2. **Descriptive ODD scoring and triggering-condition detection** - driven by the user-editable `config/sotif_odd_tc.yaml` (ODD factor taxonomy, value→score mapping, triggering-condition rules), rather than hardcoded assumptions, so the framework can be pointed at a different System Under Test's ODD without touching code.
-3. **Hazard and residual-risk computation** - for each of 7 hazard categories (vehicle/pedestrian/static collisions, red-light running, stop-sign running, off-road, lane invasion), using the established CARLA-Leaderboard-style severity weights already validated in this project. A scenario is flagged **non-acceptable** when its residual risk exceeds an acceptance threshold (0.2 by default, configurable in `config/sotif_odd_tc.yaml`).
-4. **Final SOTIF report generation** - per-scenario hazard rates, residual risk, **average execution time**, and route-completion rate.
-5. **ODD/triggering-condition coverage and entropy** - how much of the declared ODD/TC taxonomy the suite exercises, and how evenly, computed both over the whole suite and restricted to non-acceptable scenarios only.
+2. **Critical/functional/dynamics metrics** - time-to-collision (TTC), minimum distance before violation (MDBV), time-exposed-TTC (TET), route-completion/stability, and driving-dynamics metrics, computed per run from the raw frame-by-frame data and saved back into each log's `results.critical_metrics`/`functional_metrics`/`dynamics_metrics`.
+3. **Descriptive ODD scoring and triggering-condition detection** - driven by the user-editable `config/sotif_odd_tc.yaml` (ODD factor taxonomy, value→score mapping, triggering-condition rules), rather than hardcoded assumptions, so the framework can be pointed at a different System Under Test's ODD without touching code.
+4. **Hazard and residual-risk computation** - for each of 7 hazard categories (vehicle/pedestrian/static collisions, red-light running, stop-sign running, off-road, lane invasion), using the established CARLA-Leaderboard-style severity weights already validated in this project. A scenario is flagged **non-acceptable** when its residual risk exceeds an acceptance threshold (0.2 by default, configurable in `config/sotif_odd_tc.yaml`).
+5. **Final SOTIF report generation** - per-scenario hazard rates, residual risk, **average execution time**, and route-completion rate.
+6. **ODD/triggering-condition coverage and entropy** - how much of the declared ODD/TC taxonomy the suite exercises, and how evenly, computed both over the whole suite and restricted to non-acceptable scenarios only.
 
 The pipeline is designed to process multiple datasets in a uniform way, making it suitable for comparing outputs produced by different scenario generation tools under the same evaluation workflow.
 
@@ -103,7 +104,7 @@ src/
 └── utils/         Shared CARLA/JSON helpers
 ```
 
-Non-code assets stay at the repository root: `config/` (the ODD/TC YAML), `datasets/` (base logs and produced CSVs), `docs/`, `scenic_example/` (sample scenario suites).
+Non-code assets stay at the repository root: `config/` (the ODD/TC YAML), `outputs/` (base logs and produced CSVs), `docs/`, `scenic_example/` (sample scenario suites).
 
 ## Requirements
 
@@ -161,11 +162,11 @@ With a CARLA `0.9.16` server already running (locally, or the address of a remot
 ```bash
 python -m src.runner.run_experiment \
   --input_dir scenic_example/common \
-  --tool_name scenic_demo \
+  --output_folder scenic_demo \
   --num_runs 10
 ```
 
-This executes every `.scenic` file found (recursively) under `--input_dir` 10 times each, writes the base logs to `datasets/scenic_demo/`, and then automatically runs the full SOTIF enrichment pipeline (ODD/TC scoring, hazard/residual-risk computation, final report, coverage/entropy) on the result. Final outputs land in `datasets/` as `scenic_demo_SOTIF_Final.csv`, `scenic_demo_sotif_hazard_leaderboard.csv`, and `scenic_demo_odd_tc_coverage_{all,non_acceptable}.csv`.
+This executes every `.scenic` file found (recursively) under `--input_dir` 10 times each, writes the base logs to `outputs/scenic_demo/`, and then automatically runs the full SOTIF enrichment pipeline (critical/functional/dynamics metrics, ODD/TC scoring, hazard/residual-risk computation, final report, coverage/entropy) on the result. Everything for this run lands together in `outputs/scenic_demo/`: the per-run logs plus `SOTIF_Final.csv`, `sotif_hazard_leaderboard.csv`, `odd_scores.csv`, and `odd_tc_coverage_{all,non_acceptable}.csv`.
 
 Useful flags:
 - `--engine {behavior_agent,autoware}` (default `behavior_agent`): drive the ego with Scenic's own compiled behavior, or connect instead to a remote CARLA+Autoware service via `--address`/`--port`.
@@ -177,4 +178,4 @@ If you only want to (re-)run Stage 1 on datasets you already have (e.g. produced
 python -m src.pipeline.run_pipeline
 ```
 
-This processes every dataset folder already present under `datasets/`.
+This processes every dataset folder already present under `outputs/`.

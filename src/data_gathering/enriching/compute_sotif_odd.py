@@ -172,19 +172,18 @@ def compute_odd_and_tc(log_data: Dict[str, Any], config: Dict[str, Any]):
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute SOTIF ODD metrics (config-driven)")
-    parser.add_argument("--dataset_dir", required=True, help="Path alla cartella dataset da analizzare")
-    parser.add_argument("--config", default=None, help="Path a config/sotif_odd_tc.yaml (default: repo config)")
+    parser.add_argument("--dataset_dir", required=True, help="Path to the dataset folder to analyze")
+    parser.add_argument("--config", default=None, help="Path to config/sotif_odd_tc.yaml (default: repo config)")
     args = parser.parse_args()
 
     dataset_dir = Path(args.dataset_dir).resolve()
     if not dataset_dir.exists():
-        raise FileNotFoundError(f"Dataset dir non trovata: {dataset_dir}")
+        raise FileNotFoundError(f"Dataset dir not found: {dataset_dir}")
 
     config = load_config(Path(args.config) if args.config else None)
 
-    base_dir = dataset_dir.parents[1]
     dataset_name = dataset_dir.name
-    out_csv = base_dir / "datasets" / f"{dataset_name}.csv"
+    out_csv = dataset_dir / "odd_scores.csv"
 
     print(f"[INFO] Dataset       : {dataset_name}")
     print(f"[INFO] Input logs    : {dataset_dir}")
@@ -192,7 +191,7 @@ def main() -> None:
 
     files = sorted(dataset_dir.glob("*_log_basic.json"))
     if not files:
-        raise SystemExit(f"Nessun *_log_basic.json trovato in {dataset_dir}")
+        raise SystemExit(f"No *_log_basic.json found in {dataset_dir}")
 
     header = [
         "scenario_id",
@@ -209,7 +208,7 @@ def main() -> None:
     seen_scenarios = set()
 
     for idx, path in enumerate(files, start=1):
-        print(f"[STEP A] ({idx}/{len(files)}) Elaboro: {path.name}")
+        print(f"[STEP A] ({idx}/{len(files)}) Processing: {path.name}")
 
         with path.open() as f:
             data = json.load(f)
@@ -246,7 +245,7 @@ def main() -> None:
             writer.writerow(r)
 
     print(f"[STEP A] File JSON elaborati: {len(files)}")
-    print(f"[STEP A] Scenari distinti trovati: {len(seen_scenarios)}")
+    print(f"[STEP A] Distinct scenarios found: {len(seen_scenarios)}")
     print(f"[STEP A] CSV scritto in: {out_csv}")
 
 

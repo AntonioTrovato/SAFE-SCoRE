@@ -200,7 +200,7 @@ class ScenicCarlaRunner:
                     ctx.logger.finalize_and_save(filename=filename)
                 except Exception:
                     log.error(
-                        "[%s] run %d: errore in finalize_and_save:\n%s",
+                        "[%s] run %d: error in finalize_and_save:\n%s",
                         scenario_id, run_index, traceback.format_exc(),
                     )
             ctx.destroy_sensors()
@@ -215,7 +215,7 @@ class ScenicCarlaRunner:
         input_dir = Path(input_dir)
         scenic_files = sorted(input_dir.rglob("*.scenic"))
         if not scenic_files:
-            raise FileNotFoundError(f"Nessun file .scenic trovato in {input_dir}")
+            raise FileNotFoundError(f"No .scenic file found in {input_dir}")
 
         log.info("Trovati %d file .scenic in %s", len(scenic_files), input_dir)
         for i, scenic_path in enumerate(scenic_files, start=1):

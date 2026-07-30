@@ -164,17 +164,17 @@ def _compute_rows(annotations: List[ScenarioAnnotation], odd_factors_cfg, tc_def
 def run(dataset_dir: Path, config_path: Optional[Path] = None, output_dir: Optional[Path] = None) -> Dict[str, Path]:
     dataset_dir = Path(dataset_dir).resolve()
     dataset_name = dataset_dir.name
-    base_dir = dataset_dir.parents[1]
-    output_dir = Path(output_dir).resolve() if output_dir else (base_dir / "datasets")
+    # written inside the dataset's own output folder, unless overridden
+    output_dir = Path(output_dir).resolve() if output_dir else dataset_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     config = load_config(config_path)
-    hazard_csv = base_dir / "datasets" / f"{dataset_name}_sotif_hazard_leaderboard.csv"
+    hazard_csv = dataset_dir / "sotif_hazard_leaderboard.csv"
     non_acceptable_ids = _read_non_acceptable_ids(hazard_csv)
 
     annotations = _load_scenario_annotations(dataset_dir, non_acceptable_ids)
     if not annotations:
-        raise SystemExit(f"Nessuno scenario annotato (sotif.odd_values) trovato in {dataset_dir}")
+        raise SystemExit(f"No annotated scenario (sotif.odd_values) found in {dataset_dir}")
 
     odd_factors_cfg = config.get("odd_factors", [])
     tc_defs_cfg = config.get("triggering_conditions", [])
@@ -187,29 +187,29 @@ def run(dataset_dir: Path, config_path: Optional[Path] = None, output_dir: Optio
 
     fieldnames = ["kind", "name", "declared_values", "observed_values", "coverage", "entropy_norm", "num_scenarios"]
 
-    all_csv = output_dir / f"{dataset_name}_odd_tc_coverage_all.csv"
+    all_csv = output_dir / "odd_tc_coverage_all.csv"
     with all_csv.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_rows)
 
-    non_acc_csv = output_dir / f"{dataset_name}_odd_tc_coverage_non_acceptable.csv"
+    non_acc_csv = output_dir / "odd_tc_coverage_non_acceptable.csv"
     with non_acc_csv.open("w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(non_acc_rows)
 
-    print(f"[OK] Coverage/entropy (tutti gli scenari, n={len(annotations)}): {all_csv}")
-    print(f"[OK] Coverage/entropy (scenari non-acceptable, n={len(non_acc_annotations)}): {non_acc_csv}")
+    print(f"[OK] Coverage/entropy (all scenarios, n={len(annotations)}): {all_csv}")
+    print(f"[OK] Coverage/entropy (non-acceptable scenarios, n={len(non_acc_annotations)}): {non_acc_csv}")
 
     return {"all": all_csv, "non_acceptable": non_acc_csv}
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute ODD/TC coverage and entropy for a dataset")
-    parser.add_argument("--dataset_dir", required=True, help="Path alla cartella dataset da analizzare")
-    parser.add_argument("--config", default=None, help="Path a config/sotif_odd_tc.yaml (default: repo config)")
-    parser.add_argument("--output_dir", default=None, help="Dove salvare i CSV (default: datasets/)")
+    parser.add_argument("--dataset_dir", required=True, help="Path to the dataset folder to analyze")
+    parser.add_argument("--config", default=None, help="Path to config/sotif_odd_tc.yaml (default: repo config)")
+    parser.add_argument("--output_dir", default=None, help="Where to save the CSVs (default: the dataset's own folder)")
     args = parser.parse_args()
 
     run(

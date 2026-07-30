@@ -116,16 +116,13 @@ def main() -> None:
     if not dataset_dir.exists():
         raise FileNotFoundError(f"Dataset dir not found: {dataset_dir}")
 
-    # project root
-    base_dir = dataset_dir.parents[1]
-
     dataset_name = dataset_dir.name
 
     # input: enriched / hazard / odd logs (depends on how you use this script)
     logs_dir = dataset_dir
 
-    # output: dynamic final CSV
-    out_csv = base_dir / "datasets" / f"{dataset_name}_SOTIF_Final.csv"
+    # output: final CSV, written inside the dataset's own output folder
+    out_csv = dataset_dir / "SOTIF_Final.csv"
 
     print(f"[INFO] Dataset        : {dataset_name}")
     print(f"[INFO] Input logs     : {logs_dir}")

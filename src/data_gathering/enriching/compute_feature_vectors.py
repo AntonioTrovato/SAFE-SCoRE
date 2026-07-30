@@ -1,8 +1,8 @@
 """
 compute_feature_vectors_multi_fast.py
-RQ3: Extracts feature vectors from enriched logs in datasets/<tool_name>/...
+RQ3: Extracts feature vectors from enriched logs in outputs/<tool_name>/...
 
-- Recursively looks for *_log_basic.json under every subfolder of datasets/
+- Recursively looks for *_log_basic.json under every subfolder of outputs/
 - For each tool:
   - immediately writes the run-level rows: <tool>_feature_vectors_runs.csv
   - incrementally computes scenario-level aggregates (mean for continuous fields, sum for counts, min for time_to_first_*)
@@ -181,25 +181,25 @@ def process_tool(tool_dir: Path, out_dir: Path, pattern: str = "*_log_basic.json
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--datasets_dir", required=True, help="datasets/ folder containing a subfolder per tool")
-    ap.add_argument("--out_dir", default=None, help="Where to save the CSVs (default: datasets_dir)")
+    ap.add_argument("--outputs_dir", required=True, help="outputs/ folder containing a subfolder per tool")
+    ap.add_argument("--out_dir", default=None, help="Where to save the CSVs (default: outputs_dir)")
     ap.add_argument("--pattern", default="*_log_basic.json", help="Pattern of the enriched logs")
     args = ap.parse_args()
 
-    datasets_dir = Path(args.datasets_dir)
-    if not datasets_dir.exists():
-        raise FileNotFoundError(f"datasets_dir not found: {datasets_dir}")
+    outputs_dir = Path(args.outputs_dir)
+    if not outputs_dir.exists():
+        raise FileNotFoundError(f"outputs_dir not found: {outputs_dir}")
 
-    out_dir = Path(args.out_dir) if args.out_dir else datasets_dir
+    out_dir = Path(args.out_dir) if args.out_dir else outputs_dir
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    tool_dirs = [p for p in datasets_dir.iterdir() if p.is_dir()]
+    tool_dirs = [p for p in outputs_dir.iterdir() if p.is_dir()]
     if not tool_dirs:
-        raise RuntimeError(f"No tool subfolder found in {datasets_dir}")
+        raise RuntimeError(f"No tool subfolder found in {outputs_dir}")
 
     print("==============================================")
     print("[START] Feature vector extraction (RQ3)")
-    print(f"[INFO] Datasets dir: {datasets_dir.resolve()}")
+    print(f"[INFO] Outputs dir: {outputs_dir.resolve()}")
     print(f"[INFO] Output dir: {out_dir.resolve()}")
     print(f"[INFO] Tools found: {[d.name for d in tool_dirs]}")
     print("==============================================", flush=True)

@@ -2,7 +2,7 @@
 run_pipeline.py
 
 Entry point for the SOTIF enrichment pipeline: processes every dataset
-folder under datasets/ (already-populated base logs) through the ODD,
+folder under outputs/ (already-populated base logs) through the ODD,
 hazard, final-report, and ODD/TC coverage steps. See src/pipeline/sotif_pipeline.py
 for the step-by-step description.
 

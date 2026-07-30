@@ -78,16 +78,13 @@ def main():
 
     acceptance_threshold = get_acceptance_threshold(load_config(Path(args.config) if args.config else None))
 
-    # project root
-    base_dir = dataset_dir.parents[1]
-
     dataset_name = dataset_dir.name
 
     # input logs (or intermediate files) inside the dataset folder
     logs_dir = dataset_dir
 
-    # dynamic output CSV (one per dataset)
-    out_csv = base_dir / "datasets" / f"{dataset_name}_sotif_hazard_leaderboard.csv"
+    # output CSV, written inside the dataset's own output folder
+    out_csv = dataset_dir / "sotif_hazard_leaderboard.csv"
 
     print(f"[INFO] Dataset        : {dataset_name}")
     print(f"[INFO] Input logs     : {logs_dir}")

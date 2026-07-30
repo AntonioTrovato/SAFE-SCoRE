@@ -6,7 +6,8 @@ from pathlib import Path
 class SOTIFPipeline:
     """
     Full SOTIF-like pipeline (multi-dataset):
-    For each folder under base_dir/datasets:
+    For each folder under base_dir/outputs:
+    0. Critical/functional/dynamics metrics enrichment (TTC, MDBV, TET, etc.)
     1. Sanity check of the base logs
     2. ODD computation (descriptive)
     3. Hazard computation (Leaderboard-based)
@@ -17,10 +18,11 @@ class SOTIFPipeline:
     def __init__(self, base_dir: Path):
         self.base_dir = base_dir
 
-        # datasets directory (the dynamic source of input data)
-        self.datasets_dir = base_dir / "datasets"
+        # outputs directory (the dynamic source of input data, and where results are written)
+        self.outputs_dir = base_dir / "outputs"
 
         # existing enrichment/analysis scripts
+        self.step0_orchestrator_script = base_dir / "src" / "data_gathering" / "enriching" / "orchestrator.py"
         self.stepA_odd_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif_odd.py"
         self.stepB_hazard_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif_hazard.py"
         self.stepC_report_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif.py"
@@ -67,14 +69,14 @@ class SOTIFPipeline:
     # Dataset discovery
     # --------------------------------------------------
     def list_dataset_folders(self):
-        if not self.datasets_dir.exists():
-            raise FileNotFoundError(f"datasets folder not found: {self.datasets_dir}")
+        if not self.outputs_dir.exists():
+            raise FileNotFoundError(f"outputs folder not found: {self.outputs_dir}")
 
-        folders = [p for p in self.datasets_dir.iterdir() if p.is_dir()]
+        folders = [p for p in self.outputs_dir.iterdir() if p.is_dir()]
         if not folders:
-            raise RuntimeError(f"No subfolders found in {self.datasets_dir}")
+            raise RuntimeError(f"No subfolders found in {self.outputs_dir}")
 
-        self.logger.info(f"Found {len(folders)} dataset folders in: {self.datasets_dir}")
+        self.logger.info(f"Found {len(folders)} dataset folders in: {self.outputs_dir}")
         return sorted(folders)
 
     # --------------------------------------------------
@@ -94,6 +96,35 @@ class SOTIFPipeline:
 
         self.logger.info(f"Found {len(logs)} base logs in {dataset_dir.name}.")
         return logs
+
+    # --------------------------------------------------
+    # STEP 0.5 - Critical/functional/dynamics metrics (TTC, MDBV, TET, etc.)
+    # --------------------------------------------------
+    def compute_enriched_metrics(self, dataset_dir: Path):
+        step_name = "STEP 0.5 - Critical/Functional/Dynamics metrics"
+        if not self.step0_orchestrator_script.exists():
+            raise FileNotFoundError(f"{step_name} script not found: {self.step0_orchestrator_script}")
+
+        self.logger.info(f"▶ Starting {step_name} | dataset: {dataset_dir.name}")
+        result = subprocess.run(
+            [
+                "python", str(self.step0_orchestrator_script),
+                "--input_dir", str(dataset_dir),
+                "--output_dir", str(dataset_dir),
+            ],
+            capture_output=True,
+            text=True
+        )
+
+        if result.returncode != 0:
+            self.logger.error(f"✖ Error in {step_name} | dataset: {dataset_dir.name}")
+            if result.stderr:
+                self.logger.error(result.stderr)
+            raise RuntimeError(f"{step_name} failed for {dataset_dir.name}")
+
+        self.logger.info(f"✔ {step_name} completed | dataset: {dataset_dir.name}")
+        if result.stdout:
+            self.logger.debug(result.stdout)
 
     # --------------------------------------------------
     # STEP 1 - Enrichment + ODD
@@ -156,10 +187,11 @@ class SOTIFPipeline:
         for dataset_dir in dataset_folders:
             self.logger.info(f"\n===== DATASET: {dataset_dir.name} =====")
             self.check_logs(dataset_dir)
+            self.compute_enriched_metrics(dataset_dir)
             self.compute_odd(dataset_dir)
             self.compute_hazard(dataset_dir)
             self.compute_final_report(dataset_dir)
             self.compute_odd_tc_coverage(dataset_dir)
 
         self.logger.info("\n===== SOTIF PIPELINE COMPLETE =====")
-        self.logger.info(f"Final datasets available in: {self.datasets_dir}")
+        self.logger.info(f"Final outputs available in: {self.outputs_dir}")

@@ -355,12 +355,12 @@ def run_clustering():
     # Load and prepare data
     #critical_df, full_df = load_dataset(Path("../../logs/enriched"))
 
-    # Save datasets
-    #full_df.to_csv("..datasets/full_dataset.csv", index=False)
-    #critical_df.to_csv("..datasets/critical_dataset.csv", index=False)
+    # Save outputs
+    #full_df.to_csv("..outputs/full_dataset.csv", index=False)
+    #critical_df.to_csv("..outputs/critical_dataset.csv", index=False)
 
     # Load critical dataset
-    critical_df = pd.read_csv("../../datasets/critical_dataset.csv")
+    critical_df = pd.read_csv("../../outputs/critical_dataset.csv")
 
     # Select and scale features
     cols_to_use = [c for c in FEATURES_TO_CLUSTER if c in critical_df.columns]
@@ -424,7 +424,7 @@ def run_clustering():
     print(f"-> optimal k: {optimal_k} (Silhouette: {silhouette_scores[optimal_k]:.3f})")
 
     # Merge clusters with full dataset
-    full_dataset = pd.read_csv("../../datasets/full_dataset.csv")
+    full_dataset = pd.read_csv("../../outputs/full_dataset.csv")
     critical_with_cluster = critical_df.copy()
     critical_with_cluster["cluster"] = labels
 
@@ -438,7 +438,7 @@ def run_clustering():
         pd.notnull(full_dataset["cluster"]), None
     )
 
-    full_dataset_path = Path("../../datasets/full_dataset_with_clusters.csv")
+    full_dataset_path = Path("../../outputs/full_dataset_with_clusters.csv")
     #full_dataset.to_csv(full_dataset_path, index=False)
 
 if __name__ == "__main__":

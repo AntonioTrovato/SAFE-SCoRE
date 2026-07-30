@@ -28,7 +28,7 @@ plt.rcParams.update({
 class FuzzingToolAnalyzer:
     def __init__(self,
                  json_path: str = "results/tool_scores.json",
-                 csv_path: str = "datasets/full_dataset_with_clusters.csv"):
+                 csv_path: str = "outputs/full_dataset_with_clusters.csv"):
 
         self.json_path = Path(json_path)
         self.csv_path = Path(csv_path)
@@ -386,7 +386,7 @@ def draw_graphs():
     try:
         analyzer = FuzzingToolAnalyzer(
             json_path="../../results/tool_scores.json",
-            csv_path="../../datasets/full_dataset_with_clusters.csv"
+            csv_path="../../outputs/full_dataset_with_clusters.csv"
         )
         analyzer.run_complete_analysis()
     except Exception as e:

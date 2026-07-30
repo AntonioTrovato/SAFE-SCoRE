@@ -2,14 +2,14 @@
 merge_feature_vectors.py
 RQ3: Automatic merge of scenario-level feature vectors.
 
-Recursively searches datasets_dir for all files matching:
+Recursively searches outputs_dir for all files matching:
   *_feature_vectors_scenarios.csv
 
 Concatenates them into a single CSV:
   rq3_merged_feature_vectors_scenarios.csv
 
 Usage:
-python merge_feature_vectors.py --datasets_dir datasets
+python merge_feature_vectors.py --outputs_dir outputs
 """
 
 from __future__ import annotations
@@ -29,18 +29,18 @@ def infer_tool_name(path: Path) -> str:
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--datasets_dir", required=True, help="datasets/ folder (recursive)")
+    ap.add_argument("--outputs_dir", required=True, help="outputs/ folder (recursive)")
     ap.add_argument("--pattern", default="*_feature_vectors_scenarios.csv", help="File pattern to merge")
     ap.add_argument("--out_name", default="rq3_merged_feature_vectors_scenarios.csv", help="Merged output name")
     args = ap.parse_args()
 
-    datasets_dir = Path(args.datasets_dir)
-    if not datasets_dir.exists():
-        raise FileNotFoundError(f"datasets_dir not found: {datasets_dir}")
+    outputs_dir = Path(args.outputs_dir)
+    if not outputs_dir.exists():
+        raise FileNotFoundError(f"outputs_dir not found: {outputs_dir}")
 
-    files = sorted(datasets_dir.rglob(args.pattern))
+    files = sorted(outputs_dir.rglob(args.pattern))
     if not files:
-        raise RuntimeError(f"No files found matching pattern {args.pattern} inside {datasets_dir}")
+        raise RuntimeError(f"No files found matching pattern {args.pattern} inside {outputs_dir}")
 
     print(f"[INFO] Found {len(files)} scenario-level CSV files to merge:")
     for p in files:
@@ -57,7 +57,7 @@ def main():
 
     merged = pd.concat(dfs, ignore_index=True)
 
-    out_path = datasets_dir / args.out_name
+    out_path = outputs_dir / args.out_name
     merged.to_csv(out_path, index=False)
 
     print(f"[DONE] Merged file written: {out_path.resolve()}")
