@@ -1,5 +1,6 @@
 import logging
 import subprocess
+import sys
 from pathlib import Path
 
 
@@ -50,7 +51,7 @@ class SOTIFPipeline:
 
         self.logger.info(f"▶ Starting {step_name} | dataset: {dataset_dir.name}")
         result = subprocess.run(
-            ["python", str(script), "--dataset_dir", str(dataset_dir)],
+            [sys.executable, str(script), "--dataset_dir", str(dataset_dir)],
             capture_output=True,
             text=True
         )
@@ -108,7 +109,7 @@ class SOTIFPipeline:
         self.logger.info(f"▶ Starting {step_name} | dataset: {dataset_dir.name}")
         result = subprocess.run(
             [
-                "python", str(self.step0_orchestrator_script),
+                sys.executable, str(self.step0_orchestrator_script),
                 "--input_dir", str(dataset_dir),
                 "--output_dir", str(dataset_dir),
             ],
