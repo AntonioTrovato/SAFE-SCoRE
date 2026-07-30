@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
 import sys
 import tempfile
 import time
@@ -81,6 +82,61 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
     return tmp_path
 
 
+def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
+    """
+    TODO: plug in the OpenSCENARIO-(or other format)-to-Scenic converter
+    developed by the team. Should read `src` (any non-.scenic scenario
+    file - OpenSCENARIO or otherwise, format is not our concern here) and
+    write an equivalent .scenic file at `dest`, returning `dest` on
+    success. Return None if the format isn't supported / conversion
+    fails, so the caller can skip it with a warning rather than crash the
+    whole suite.
+    """
+    return None
+
+
+def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
+    """
+    Ensures every scenario to be executed is a .scenic file.
+
+    If input_dir already contains only .scenic files, it is returned
+    unchanged. Otherwise, every non-.scenic file found (recursively) is
+    passed through _convert_to_scenic(), and the full resulting set - the
+    already-.scenic files plus the newly-converted ones - is assembled
+    into a fresh folder under work_dir, which is returned instead and used
+    as the actual input for the rest of the run.
+    """
+    input_dir = Path(input_dir)
+    all_files = [p for p in input_dir.rglob("*") if p.is_file()]
+    scenic_files = [p for p in all_files if p.suffix == ".scenic"]
+    other_files = [p for p in all_files if p.suffix != ".scenic"]
+
+    if not other_files:
+        return input_dir
+
+    log.info(
+        "Found %d non-.scenic file(s) in %s alongside %d .scenic file(s); converting to .scenic.",
+        len(other_files), input_dir, len(scenic_files),
+    )
+
+    converted_dir = work_dir / "converted_scenic_input"
+    converted_dir.mkdir(parents=True, exist_ok=True)
+
+    for src in scenic_files:
+        dest = converted_dir / src.relative_to(input_dir)
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+
+    for src in other_files:
+        dest = (converted_dir / src.relative_to(input_dir)).with_suffix(".scenic")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        converted_path = _convert_to_scenic(src, dest)
+        if converted_path is None:
+            log.warning("No converter available yet for %s - skipping.", src)
+
+    return converted_dir
+
+
 def _carla_town_from_scenic(scenic_path: Path) -> tuple[Optional[str], Optional[Path]]:
     text = scenic_path.read_text(encoding="utf-8")
     m = _MAP_PARAM_RE.search(text)
@@ -102,7 +158,7 @@ class ScenicCarlaRunner:
         max_scenario_seconds: float = 120.0,
     ):
         if engine not in ("behavior_agent", "autoware"):
-            raise ValueError(f"engine sconosciuto: {engine}")
+            raise ValueError(f"Unknown engine: {engine}")
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -187,12 +243,12 @@ class ScenicCarlaRunner:
             wall_time = time.time() - t_start
 
             if simulation is None:
-                log.warning("[%s] run %d: simulazione rifiutata da Scenic", scenario_id, run_index)
+                log.warning("[%s] run %d: simulation rejected by Scenic", scenario_id, run_index)
                 return
 
-            log.info("[%s] run %d completata in %.1fs", scenario_id, run_index, wall_time)
+            log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
         except Exception:
-            log.error("[%s] run %d fallita:\n%s", scenario_id, run_index, traceback.format_exc())
+            log.error("[%s] run %d failed:\n%s", scenario_id, run_index, traceback.format_exc())
         finally:
             if ctx.logger is not None and not ctx.logger.ended:
                 filename = f"{scenario_id}_run_{run_index:02d}_log_basic.json"
@@ -212,18 +268,18 @@ class ScenicCarlaRunner:
 
     # ------------------------------------------------------------------
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:
-        input_dir = Path(input_dir)
+        input_dir = _prepare_scenic_input_dir(Path(input_dir), work_dir=self.output_dir)
         scenic_files = sorted(input_dir.rglob("*.scenic"))
         if not scenic_files:
             raise FileNotFoundError(f"No .scenic file found in {input_dir}")
 
-        log.info("Trovati %d file .scenic in %s", len(scenic_files), input_dir)
+        log.info("Found %d .scenic file(s) in %s", len(scenic_files), input_dir)
         for i, scenic_path in enumerate(scenic_files, start=1):
             log.info("===== [%d/%d] %s =====", i, len(scenic_files), scenic_path.name)
             try:
                 self.run_file(scenic_path, num_runs=num_runs)
             except Exception:
                 log.error(
-                    "Scenario %s fallito interamente:\n%s",
+                    "Scenario %s failed entirely:\n%s",
                     scenic_path.name, traceback.format_exc(),
                 )

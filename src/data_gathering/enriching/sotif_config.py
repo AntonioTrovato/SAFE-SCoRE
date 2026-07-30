@@ -57,7 +57,7 @@ def evaluate_predicate(pred: Dict[str, Any], context: Dict[str, Any]) -> bool:
     expected = pred.get("value")
 
     if op not in _OPS:
-        raise ValueError(f"Operatore predicato sconosciuto: {op}")
+        raise ValueError(f"Unknown predicate operator: {op}")
 
     actual = resolve_field(context, field)
     try:
