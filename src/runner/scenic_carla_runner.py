@@ -71,7 +71,7 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
         quote = match.group(1)
         rel = match.group("path")
         abs_path = (scenic_path.parent / rel).resolve()
-        return f"param map = localPath({quote}{abs_path}{quote})"
+        return f"param map = localPath({quote}{abs_path.as_posix()}{quote})"
 
     text = _MAP_PARAM_RE.sub(_rewrite_map, text, count=1)
     text += _MONITOR_SNIPPET
