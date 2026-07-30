@@ -1,0 +1,198 @@
+# SOTIF ODD / Triggering-Condition configuration
+#
+# This file is the single place where a user plugs in the ODD (Operational
+# Design Domain) definition and triggering-condition rules for their own
+# System Under Test, instead of editing Python code. It is read by
+# data_gathering/enriching/compute_sotif_odd.py and by
+# analysis/odd_tc_coverage.py (which needs to know the full universe of
+# declared values/conditions to compute coverage against).
+#
+# ---------------------------------------------------------------------------
+# Hazard acceptance
+# ---------------------------------------------------------------------------
+# A scenario is "non-acceptable" if, for at least one of the 7 hazards
+# computed by compute_sotif_hazard.py, the residual risk R_h = P_h * S_h
+# exceeds this threshold.
+hazards:
+  acceptance_threshold: 0.2
+
+# ---------------------------------------------------------------------------
+# ODD factors
+# ---------------------------------------------------------------------------
+# Each factor:
+#   name       - identifier, used as the key in sotif.odd_values
+#   category   - one of: environmental, infrastructure, traffic, operational
+#                (the four sub-scores averaged into sotif.odd_global)
+#   source     - dotted path read from the log, rooted at either
+#                "world_state.*" (raw facts snapshotted by the runner at
+#                scenario start: weather floats, actor counts, map name,
+#                speed limit, mission timeout/waypoints) or "derived.*"
+#                (categorical buckets computed once, generically, by
+#                compute_sotif_odd.py from world_state - see its
+#                compute_derived_fields())
+#   values     - map of observed-value -> score in [0, 1]
+#   default    - score used when the observed value isn't a key in `values`
+odd_factors:
+  - name: weather
+    category: environmental
+    source: derived.weather_preset
+    values:
+      ClearNoon: 1.0
+      CloudyNoon: 0.9
+      WetNoon: 0.8
+      SoftRainNoon: 0.7
+      HardRainNoon: 0.5
+    default: 0.6
+
+  - name: time_of_day
+    category: environmental
+    source: derived.time_of_day
+    values:
+      noon: 1.0
+      morning: 0.9
+      afternoon: 0.9
+      dawn: 0.7
+      dusk: 0.7
+      night: 0.4
+    default: 0.7
+
+  - name: road_condition
+    category: environmental
+    source: derived.road_condition
+    values:
+      dry: 1.0
+      wet: 0.8
+      snow: 0.4
+      ice: 0.3
+    default: 0.8
+
+  - name: infra_complexity
+    category: infrastructure
+    source: derived.mission_length_bucket
+    values:
+      short: 1.0
+      medium: 0.8
+      long: 0.6
+    default: 0.8
+
+  - name: traffic_density
+    category: traffic
+    source: derived.traffic_density
+    values:
+      low: 1.0
+      medium: 0.8
+      high: 0.5
+    default: 0.8
+
+  - name: pedestrian_density
+    category: traffic
+    source: derived.pedestrian_density
+    values:
+      low: 1.0
+      medium: 0.8
+      high: 0.5
+    default: 0.8
+
+  - name: operational_speed
+    category: operational
+    source: derived.speed_limit_bucket
+    values:
+      low: 1.0
+      medium: 0.8
+      high: 0.5
+    default: 0.8
+
+  - name: mission_duration
+    category: operational
+    source: derived.timeout_bucket
+    values:
+      short: 1.0
+      medium: 0.8
+      long: 0.6
+    default: 0.8
+
+# ---------------------------------------------------------------------------
+# Triggering conditions
+# ---------------------------------------------------------------------------
+# Each condition fires (is added to sotif.triggering_conditions) when ALL of
+# its `all_of` predicates hold. A predicate is {field, op, value}, where:
+#   field - dotted path, rooted at "world_state.*", "derived.*", or
+#           "metrics.*" (per-scenario computed metrics: min_distance,
+#           min_ttc, max_ego_speed, avg_ego_speed)
+#   op    - one of: lt, lte, gt, gte, eq, in, not_in
+#   value - scalar or list, compared against the resolved field value
+triggering_conditions:
+  - name: adverse_weather
+    all_of:
+      - field: derived.weather_preset
+        op: in
+        value: [HardRainNoon, SoftRainNoon]
+
+  - name: low_visibility_time
+    all_of:
+      - field: derived.time_of_day
+        op: in
+        value: [dawn, dusk, night]
+
+  - name: low_friction_surface
+    all_of:
+      - field: derived.road_condition
+        op: in
+        value: [wet, snow, ice]
+
+  - name: combined_environment_challenge
+    all_of:
+      - field: derived.weather_preset
+        op: in
+        value: [HardRainNoon, SoftRainNoon]
+      - field: derived.time_of_day
+        op: in
+        value: [dawn, dusk, night]
+
+  - name: high_traffic_density
+    all_of:
+      - field: world_state.num_npc_vehicles
+        op: gte
+        value: 8
+
+  - name: mixed_actor_interaction
+    all_of:
+      - field: world_state.num_npc_vehicles
+        op: gte
+        value: 3
+      - field: world_state.num_pedestrians
+        op: gte
+        value: 2
+
+  - name: near_miss_distance
+    all_of:
+      - field: metrics.min_distance
+        op: lt
+        value: 3.0
+
+  - name: critical_ttc
+    all_of:
+      - field: metrics.min_ttc
+        op: lt
+        value: 3.0
+
+  - name: high_speed_approach
+    all_of:
+      - field: metrics.max_ego_speed
+        op: gt
+        value: 12.0
+      - field: metrics.min_ttc
+        op: lt
+        value: 4.0
+
+  - name: complex_route
+    all_of:
+      - field: world_state.num_waypoints
+        op: gt
+        value: 50
+
+  - name: very_complex_route
+    all_of:
+      - field: world_state.num_waypoints
+        op: gt
+        value: 80
