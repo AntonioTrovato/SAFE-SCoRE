@@ -6,8 +6,8 @@ scenario files, executes each one on CARLA (10x by default) and then runs
 the existing SOTIF enrichment/metrics pipeline on the resulting logs.
 
 Usage (from the repository root):
-    python -m src.runner.run_experiment --input_dir scenic_example/common --tool_name scenic_demo
-    python -m src.runner.run_experiment --input_dir scenic_example --tool_name scenic_full \
+    python -m src.runner.run_experiment --input_dir scenic_example/common --output_folder scenic_demo
+    python -m src.runner.run_experiment --input_dir scenic_example --output_folder scenic_full \
         --num_runs 10 --engine autoware --address 10.0.0.5 --port 2000
 """
 
@@ -32,9 +32,9 @@ def main() -> None:
     )
     parser.add_argument("--input_dir", required=True, help="Folder containing the .scenic files (searched recursively)")
     parser.add_argument(
-        "--tool_name",
+        "--output_folder",
         required=True,
-        help="Name of the output dataset folder, under datasets/<tool_name>/",
+        help="Name of the output folder, under outputs/<output_folder>/",
     )
     parser.add_argument("--num_runs", type=int, default=10, help="Executions per scenario (default: 10)")
     parser.add_argument(
@@ -62,11 +62,11 @@ def main() -> None:
 
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 
-    output_dir = REPO_ROOT / "datasets" / args.tool_name
+    output_dir = REPO_ROOT / "outputs" / args.output_folder
 
     runner = ScenicCarlaRunner(
         output_dir=output_dir,
-        tool_name=args.tool_name,
+        tool_name=args.output_folder,
         engine=args.engine,
         address=args.address,
         port=args.port,

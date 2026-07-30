@@ -48,14 +48,23 @@ The different analysis steps are aggregated into final outputs that support the 
 
 ## Current pipeline structure
 
-At the current stage, the project includes a **multi-dataset SOTIF pipeline**. For each dataset folder contained in `datasets/`, the pipeline performs the following macro-steps:
+The project is organized as a single, end-to-end pipeline that goes from a suite of [Scenic](https://scenic-lang.org/) (`.scenic`) scenario files to a full SOTIF report, in two stages:
+
+**Stage 0 - Scenario execution (`src/runner/`).** Each `.scenic` scenario is executed on CARLA a configurable number of times (10 by default, as required by SOTIF's residual-risk-estimation guidance), producing one base-log JSON per run. The ego can either be driven by Scenic's own compiled driving behavior (default), or the runner can instead connect to a remote CARLA+Autoware service. See [Running the pipeline on a suite of scenarios](#running-the-pipeline-on-a-suite-of-scenarios) below.
+
+**Stage 1 - SOTIF enrichment (`src/pipeline/`, `src/data_gathering/enriching/`, `src/analysis/`).** For every dataset folder under `datasets/` (whether produced by Stage 0 or provided independently by an externally-integrated tool, see `docs/integration.md`), the pipeline performs:
 
 1. **Sanity check of base logs**
-2. **Descriptive ODD analysis**
-3. **Hazard and severity computation**
-4. **Final SOTIF report generation**
+2. **Descriptive ODD scoring and triggering-condition detection** - driven by the user-editable `config/sotif_odd_tc.yaml` (ODD factor taxonomy, value→score mapping, triggering-condition rules), rather than hardcoded assumptions, so the framework can be pointed at a different System Under Test's ODD without touching code.
+3. **Hazard and residual-risk computation** - for each of 7 hazard categories (vehicle/pedestrian/static collisions, red-light running, stop-sign running, off-road, lane invasion), using the established CARLA-Leaderboard-style severity weights already validated in this project. A scenario is flagged **non-acceptable** when its residual risk exceeds an acceptance threshold (0.2 by default, configurable in `config/sotif_odd_tc.yaml`).
+4. **Final SOTIF report generation** - per-scenario hazard rates, residual risk, **average execution time**, and route-completion rate.
+5. **ODD/triggering-condition coverage and entropy** - how much of the declared ODD/TC taxonomy the suite exercises, and how evenly, computed both over the whole suite and restricted to non-acceptable scenarios only.
 
 The pipeline is designed to process multiple datasets in a uniform way, making it suitable for comparing outputs produced by different scenario generation tools under the same evaluation workflow.
+
+### A note on the metrics used
+
+Execution-time measurement and the coverage/entropy computations are not new metrics bolted on as an afterthought: they are built on top of the same risk and behavioral metrics (time-to-collision, minimum distance before violation/MDBV, time-exposed-TTC, dynamics, etc.) this project already computed for its multi-generator comparative analyses (`src/analysis/`). Reusing them here - rather than introducing a parallel metric suite - keeps the stage-1 tool and the broader research pipeline consistent with each other.
 
 ## Conceptual workflow
 
@@ -80,12 +89,29 @@ This repository is meant to serve as a practical implementation of a broader res
 
 In this sense, the repository is both a **research artifact** and a **reusable experimental pipeline** for future studies on scenario-based validation in CARLA.
 
+## Project structure
+
+All Python source lives under `src/`, organized by responsibility:
+
+```
+src/
+├── runner/        Stage 0: executes .scenic scenarios on CARLA (run_experiment.py)
+├── data_gathering/ Base logging (CarlaBasicLogger, ViolationMonitor) + enrichment scripts
+│   └── enriching/  ODD/hazard/final-report computation, config-driven via config/sotif_odd_tc.yaml
+├── pipeline/      Stage 1 orchestration (run_pipeline.py, SOTIFPipeline)
+├── analysis/      Cross-tool research-question analyses (run_analysis.py) + ODD/TC coverage-entropy
+└── utils/         Shared CARLA/JSON helpers
+```
+
+Non-code assets stay at the repository root: `config/` (the ODD/TC YAML), `datasets/` (base logs and produced CSVs), `docs/`, `scenic_example/` (sample scenario suites).
+
 ## Requirements
 
 The project has been developed and tested using the following environment:
 
-- **Python version:** `3.7.16`
-- **Operating system:** Linux (tested on Ubuntu)
+- **Python version:** `3.10` (required by the `scenic` scenario-execution dependency; earlier releases of this project targeted `3.7.16`, which cannot run Scenic 3.x)
+- **Operating system:** Linux (tested on Ubuntu), macOS
+- **CARLA:** `0.9.16`, already running/installed separately (not vendored in this repo)
 
 Before running the pipelines, make sure that the correct Python version is available and that all required dependencies are installed.
 
@@ -94,7 +120,7 @@ Before running the pipelines, make sure that the correct Python version is avail
 It is strongly recommended to run the project inside a virtual environment.
 
 ```bash
-python3.7 -m venv venv
+python3.10 -m venv venv
 source venv/bin/activate
 ```
 
@@ -106,4 +132,49 @@ Once the virtual environment is activated, install the required libraries using:
 pip install -r requirements.txt
 ```
 
-This will install all the dependencies needed to run the SOTIF evaluation pipeline and the analysis pipeline.
+This installs, among others, the `carla` client package (make sure its version matches your CARLA server) and `PyYAML` (used to load `config/sotif_odd_tc.yaml`).
+
+### Install Scenic
+
+[Scenic](https://scenic-lang.org/) is used as the scenario metamodel language for Stage 0 (`src/runner/`) and is not pinned in `requirements.txt`, since it's commonly installed from a development checkout. Either:
+
+```bash
+pip install scenic
+```
+
+or, if you're working against a Scenic source checkout (e.g. to track a specific branch):
+
+```bash
+pip install -e /path/to/your/Scenic/checkout
+```
+
+Verify everything is wired up correctly with:
+
+```bash
+python -c "import carla, scenic; print('OK')"
+```
+
+## Running the pipeline on a suite of scenarios
+
+With a CARLA `0.9.16` server already running (locally, or the address of a remote CARLA+Autoware service), the whole pipeline - Stage 0 scenario execution followed by Stage 1 SOTIF enrichment - is a single command, run from the repository root:
+
+```bash
+python -m src.runner.run_experiment \
+  --input_dir scenic_example/common \
+  --tool_name scenic_demo \
+  --num_runs 10
+```
+
+This executes every `.scenic` file found (recursively) under `--input_dir` 10 times each, writes the base logs to `datasets/scenic_demo/`, and then automatically runs the full SOTIF enrichment pipeline (ODD/TC scoring, hazard/residual-risk computation, final report, coverage/entropy) on the result. Final outputs land in `datasets/` as `scenic_demo_SOTIF_Final.csv`, `scenic_demo_sotif_hazard_leaderboard.csv`, and `scenic_demo_odd_tc_coverage_{all,non_acceptable}.csv`.
+
+Useful flags:
+- `--engine {behavior_agent,autoware}` (default `behavior_agent`): drive the ego with Scenic's own compiled behavior, or connect instead to a remote CARLA+Autoware service via `--address`/`--port`.
+- `--skip_enrichment`: only execute the scenarios, without running Stage 1 afterwards (e.g. to inspect the raw base logs first).
+
+If you only want to (re-)run Stage 1 on datasets you already have (e.g. produced by an externally-integrated tool per `docs/integration.md`), you can run it standalone:
+
+```bash
+python -m src.pipeline.run_pipeline
+```
+
+This processes every dataset folder already present under `datasets/`.
