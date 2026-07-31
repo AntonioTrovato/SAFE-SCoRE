@@ -82,13 +82,13 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
     return tmp_path
 
 
-def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
+def _convert_to_scenic(src: Path, dest: Path):
     """
     TODO: plug in the OpenSCENARIO-(or other format)-to-Scenic converter
     developed by the team. Should read `src` (any non-.scenic scenario
     file - OpenSCENARIO or otherwise, format is not our concern here) and
-    write an equivalent .scenic file at `dest`, returning `dest` on
-    success. Return None if the format isn't supported / conversion
+    write an equivalent .scenic file at `dest`, returning `True` on
+    success, false otherwise. Return None if the format isn't supported / conversion
     fails, so the caller can skip it with a warning rather than crash the
     whole suite.
     """
@@ -131,7 +131,7 @@ def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
         dest = (converted_dir / src.relative_to(input_dir)).with_suffix(".scenic")
         dest.parent.mkdir(parents=True, exist_ok=True)
         converted_path = _convert_to_scenic(src, dest)
-        if converted_path is None:
+        if converted_path is None | converted_path is False:
             log.warning("No converter available yet for %s - skipping.", src)
 
     return converted_dir
