@@ -111,7 +111,7 @@ Non-code assets stay at the repository root: `config/` (the ODD/TC YAML), `outpu
 The project has been developed and tested using the following environment:
 
 - **Python version:** `3.10` (required by the `scenic` scenario-execution dependency; earlier releases of this project targeted `3.7.16`, which cannot run Scenic 3.x)
-- **Operating system:** Linux (tested on Ubuntu), macOS
+- **Operating system:** Ubuntu 22.04 or Windows
 - **CARLA:** `0.9.16`, already running/installed separately (not vendored in this repo)
 
 Before running the pipelines, make sure that the correct Python version is available and that all required dependencies are installed.
@@ -121,8 +121,32 @@ Before running the pipelines, make sure that the correct Python version is avail
 It is strongly recommended to run the project inside a virtual environment.
 
 ```bash
-python3.10 -m venv venv
-source venv/bin/activate
+# on Ubuntu
+python3.10 -m venv safe_score
+source safe_score/bin/activate
+
+# on Windows
+py -3.10 -m venv safe_score
+safe_score\Scripts\Activate
+```
+
+### Install Scenic
+
+With the prompt still in the safe_score virtual environment
+
+```bash
+python -m pip install --upgrade pip
+
+# on Ubuntu
+cd ../path/to/Scenic
+git clone https://github.com/BerkeleyLearnVerify/Scenic
+cd Scenic
+python -m pip install -e .
+
+# on Windows
+git clone https://github.com/BerkeleyLearnVerify/Scenic
+cd Scenic
+python -m pip install -e .
 ```
 
 ## Install project dependencies
@@ -134,26 +158,6 @@ pip install -r requirements.txt
 ```
 
 This installs, among others, the `carla` client package (make sure its version matches your CARLA server) and `PyYAML` (used to load `config/sotif_odd_tc.yaml`).
-
-### Install Scenic
-
-[Scenic](https://scenic-lang.org/) is used as the scenario metamodel language for Stage 0 (`src/runner/`) and is not pinned in `requirements.txt`, since it's commonly installed from a development checkout. Either:
-
-```bash
-pip install scenic
-```
-
-or, if you're working against a Scenic source checkout (e.g. to track a specific branch):
-
-```bash
-pip install -e /path/to/your/Scenic/checkout
-```
-
-Verify everything is wired up correctly with:
-
-```bash
-python -c "import carla, scenic; print('OK')"
-```
 
 ## Running the pipeline on a suite of scenarios
 
