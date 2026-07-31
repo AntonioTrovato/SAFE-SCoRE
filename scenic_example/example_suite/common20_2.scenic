@@ -83,14 +83,7 @@ behavior Car2Behavior(trajectory):
 # SPECIFICATIONS                #
 #################################
 
-if globalParameters.POLICY == 'metadrive_ppo' or globalParameters.POLICY == 'ppo_with_built_in':
-    from metadrive_expert import MetaDrivePPOPolicyCar, MetaDrivePPOFollowLaneBehavior, MetaDrivePPOUpdateState
-    ego = new MetaDrivePPOPolicyCar at egoSpawnPt,
-          with blueprint MODEL,
-          with behavior MetaDrivePPOFollowLaneBehavior()
-    require monitor MetaDrivePPOUpdateState()
-else:
-    ego = new Car at egoSpawnPt,
+ego = new Car at egoSpawnPt,
           with blueprint MODEL,
           with behavior EgoBehavior()
 
@@ -106,9 +99,6 @@ car2 = new Car at car2SpawnPt,
 #################################
 # RECORDING                     #
 #################################
-
-from rulebook_benchmark import bench
-require monitor bench.bench()
 
 record True as egoReachedGoal
 record ego._boundingPolygon as egoPoly

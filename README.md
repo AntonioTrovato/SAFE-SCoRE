@@ -132,13 +132,13 @@ safe_score\Scripts\Activate
 
 ### Install Scenic
 
-With the prompt still in the safe_score virtual environment
+With the prompt still in the safe_score virtual environment and in with the prompt in the project root.
 
 ```bash
 python -m pip install --upgrade pip
+cd ../path/to/Scenic
 
 # on Ubuntu
-cd ../path/to/Scenic
 git clone https://github.com/BerkeleyLearnVerify/Scenic
 cd Scenic
 python -m pip install -e .
