@@ -136,7 +136,9 @@ With the prompt still in the safe_score virtual environment and in with the prom
 
 ```bash
 python -m pip install --upgrade pip
-cd ../path/to/Scenic
+
+# you chose a folder to clone Scenic in
+cd ../path/to/Scenic/parent/folder 
 
 # on Ubuntu
 git clone https://github.com/BerkeleyLearnVerify/Scenic
@@ -154,6 +156,7 @@ python -m pip install -e .
 Once the virtual environment is activated, install the required libraries using:
 
 ```bash
+cd path/to/SAFE-SCoRE
 pip install -r requirements.txt
 ```
 
