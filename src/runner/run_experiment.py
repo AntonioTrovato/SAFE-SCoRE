@@ -54,6 +54,13 @@ def main() -> None:
         help="Safety cap per execution, independent of the scenario's own 'terminate after'",
     )
     parser.add_argument(
+        "--client_timeout",
+        type=float,
+        default=180.0,
+        help="CARLA client networking timeout (s). Raise it for large maps ingested "
+        "as raw OpenDRIVE, where world generation is one long blocking call.",
+    )
+    parser.add_argument(
         "--skip_enrichment",
         action="store_true",
         help="Only execute the scenarios, without running the SOTIF enrichment pipeline afterwards",
@@ -72,6 +79,7 @@ def main() -> None:
         port=args.port,
         timestep=args.timestep,
         max_scenario_seconds=args.max_scenario_seconds,
+        client_timeout_s=args.client_timeout,
     )
     runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
 
