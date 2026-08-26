@@ -16,7 +16,10 @@ is out of scope for this stage-1 tool).
 
 from __future__ import annotations
 
+import contextlib
+import importlib
 import logging
+import os
 import re
 import shutil
 import sys
@@ -32,6 +35,7 @@ for _p in (REPO_ROOT, SRC_ROOT):
     if str(_p) not in sys.path:
         sys.path.insert(0, str(_p))
 
+import carla  # noqa: E402
 import scenic  # noqa: E402
 from scenic.simulators.carla import CarlaSimulator  # noqa: E402
 
@@ -42,6 +46,50 @@ log = logging.getLogger("ScenicCarlaRunner")
 _MAP_PARAM_RE = re.compile(
     r"param\s+map\s*=\s*localPath\((['\"])(?P<path>.*?)\1\)"
 )
+
+# Scenario formats _convert_to_scenic() knows how to turn into .scenic.
+_CONVERTIBLE_SUFFIXES = {".xosc"}
+
+# Stock CARLA towns are loaded by name; anything else has to be ingested as
+# raw OpenDRIVE (see _carla_town_from_scenic).
+_CARLA_TOWN_RE = re.compile(r"^Town\d+", re.IGNORECASE)
+
+# Mesh settings used when a scenario's map has to be ingested as raw
+# OpenDRIVE. CARLA's defaults (vertex_distance 2.0, wall_height 1.0,
+# additional_width 0.6) leave gaps in the generated surface that *driving*
+# vehicles fall through while stationary ones stay put - tune these if
+# actors still fall through the road.
+OPENDRIVE_MESH_PARAMS = {
+    "vertex_distance": 1.0,        # finer tessellation (default 2.0)
+    "max_road_length": 50.0,
+    "wall_height": 3.0,            # taller side barriers (default 1.0)
+    "additional_width": 3.0,       # wider drivable margin (default 0.6)
+    "smooth_junctions": True,
+    "enable_mesh_visibility": True,
+}
+
+
+@contextlib.contextmanager
+def _tuned_opendrive_generation(params: dict):
+    """Make Scenic's parameterless OpenDRIVE ingest use `params`.
+
+    CarlaSimulator hardcodes `client.generate_opendrive_world(data)`, so it
+    always takes CARLA's default mesh settings and offers no way to pass an
+    OpendriveGenerationParameters. Rather than reimplement its constructor,
+    the client call is wrapped for the duration of that construction only,
+    and restored afterwards.
+    """
+    original = carla.Client.generate_opendrive_world
+    generation_params = carla.OpendriveGenerationParameters(**params)
+
+    def _patched(client, opendrive, parameters=None, reset_settings=True):
+        return original(client, opendrive, generation_params, reset_settings)
+
+    carla.Client.generate_opendrive_world = _patched
+    try:
+        yield
+    finally:
+        carla.Client.generate_opendrive_world = original
 
 _MONITOR_SNIPPET = """
 
@@ -57,8 +105,27 @@ require monitor SafeScoreRecorder()
 
 
 def _default_timeout_s(scenic_text: str, fallback: float = 60.0) -> float:
-    m = re.search(r"terminate\s+after\s+(\d+(?:\.\d+)?)\s+seconds", scenic_text)
-    return float(m.group(1)) if m else fallback
+    """Scenario duration from its `terminate after N seconds` statement.
+
+    The duration may be written either as a literal or as a module-level
+    constant (the .xosc converter emits `SIM_DURATION = 165` followed by
+    `terminate after SIM_DURATION seconds`), so a symbolic name is resolved
+    against its assignment before falling back.
+    """
+    m = re.search(r"terminate\s+after\s+(\w+(?:\.\d+)?)\s+seconds", scenic_text)
+    if not m:
+        return fallback
+
+    value = m.group(1)
+    try:
+        return float(value)
+    except ValueError:
+        pass
+
+    const = re.search(
+        rf"^\s*{re.escape(value)}\s*=\s*(\d+(?:\.\d+)?)", scenic_text, re.MULTILINE
+    )
+    return float(const.group(1)) if const else fallback
 
 
 def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
@@ -82,17 +149,68 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
     return tmp_path
 
 
-def _convert_to_scenic(src: Path, dest: Path):
+# Which converter turns a .xosc into a .scenic, as "module:function".
+#
+# The function must take (input_path, output_path) as strings and return
+# the path it actually wrote. Swap converters either by editing this
+# default or, without touching the code, by setting the environment
+# variable - handy for A/B-ing two converters over the same input:
+#
+#     SAFE_SCORE_XOSC_CONVERTER=mypkg.my_converter:convert
+#
+DEFAULT_XOSC_CONVERTER = "runner.CARLA_converter:convert_file"
+
+
+def resolve_converter(spec: Optional[str] = None):
+    """Import the configured converter and return (function, spec_used).
+
+    Raises if the spec cannot be resolved, so a typo surfaces immediately
+    instead of looking like "there is no converter".
     """
-    TODO: plug in the OpenSCENARIO-(or other format)-to-Scenic converter
-    developed by the team. Should read `src` (any non-.scenic scenario
-    file - OpenSCENARIO or otherwise, format is not our concern here) and
-    write an equivalent .scenic file at `dest`, returning `True` on
-    success, false otherwise. Return None if the format isn't supported / conversion
-    fails, so the caller can skip it with a warning rather than crash the
-    whole suite.
+    spec = spec or os.environ.get("SAFE_SCORE_XOSC_CONVERTER") or DEFAULT_XOSC_CONVERTER
+    if ":" not in spec:
+        raise ValueError(f"Converter spec must be 'module:function', got {spec!r}")
+    module_name, _, func_name = spec.partition(":")
+    module = importlib.import_module(module_name)
+    return getattr(module, func_name), spec
+
+
+def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
     """
-    return None
+    Read `src` (a non-.scenic scenario file) and write an equivalent
+    .scenic file at `dest`. Returns the written path on success, or None
+    if the format isn't supported / conversion fails, so the caller can
+    skip it with a warning rather than crash the whole suite.
+
+    The converter is pluggable - see DEFAULT_XOSC_CONVERTER. A converter
+    emitting `model scenic.simulators.metadrive.model` still works here:
+    _run_once() passes model="scenic.simulators.carla.model" to
+    scenic.scenarioFromFile(), and that argument overrides the model
+    statement in the file (Scenic's CompileOptions.modelOverride).
+    """
+    if src.suffix.lower() not in _CONVERTIBLE_SUFFIXES:
+        return None
+
+    try:
+        convert_file, spec = resolve_converter()
+    except Exception:
+        log.error("Could not load converter; cannot convert %s:\n%s",
+                  src, traceback.format_exc())
+        return None
+
+    try:
+        written = convert_file(str(src), str(dest))
+    except Exception:
+        log.error("Conversion failed for %s (converter %s):\n%s",
+                  src, spec, traceback.format_exc())
+        return None
+
+    if written is None:
+        log.error("Converter %s returned None for %s (expected the written path).",
+                  spec, src)
+        return None
+
+    return Path(written)
 
 
 def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
@@ -109,13 +227,16 @@ def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
     input_dir = Path(input_dir)
     all_files = [p for p in input_dir.rglob("*") if p.is_file()]
     scenic_files = [p for p in all_files if p.suffix == ".scenic"]
-    other_files = [p for p in all_files if p.suffix != ".scenic"]
+    # Only genuine scenario files are converted; anything else living in the
+    # input folder (maps, READMEs, ...) is left alone - converted scenarios
+    # still reference those maps by their original path.
+    other_files = [p for p in all_files if p.suffix.lower() in _CONVERTIBLE_SUFFIXES]
 
     if not other_files:
         return input_dir
 
     log.info(
-        "Found %d non-.scenic file(s) in %s alongside %d .scenic file(s); converting to .scenic.",
+        "Found %d convertible non-.scenic file(s) in %s alongside %d .scenic file(s); converting to .scenic.",
         len(other_files), input_dir, len(scenic_files),
     )
 
@@ -131,8 +252,8 @@ def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
         dest = (converted_dir / src.relative_to(input_dir)).with_suffix(".scenic")
         dest.parent.mkdir(parents=True, exist_ok=True)
         converted_path = _convert_to_scenic(src, dest)
-        if converted_path is None | converted_path is False:
-            log.warning("No converter available yet for %s - skipping.", src)
+        if converted_path is None:
+            log.warning("Could not convert %s - skipping.", src)
 
     return converted_dir
 
@@ -143,7 +264,24 @@ def _carla_town_from_scenic(scenic_path: Path) -> tuple[Optional[str], Optional[
     if not m:
         return None, None
     xodr_path = (scenic_path.parent / m.group("path")).resolve()
-    return xodr_path.stem, xodr_path
+    stem = xodr_path.stem
+
+    if not xodr_path.exists():
+        # Converted scenarios reference their .xodr relative to the source
+        # scenario's own folder; if the map was never shipped alongside it,
+        # say so here rather than failing deep inside CarlaSimulator.
+        log.warning("Map %s referenced by %s does not exist.", xodr_path, scenic_path.name)
+
+    if _CARLA_TOWN_RE.match(stem):
+        return stem, xodr_path
+
+    # Not a stock CARLA town (e.g. an SCTrans/LGSVL map coming out of the
+    # .xosc converter). CarlaSimulator calls client.load_world(carla_map)
+    # whenever carla_map is not None and raises RuntimeError if CARLA does
+    # not know that name; passing None instead makes it ingest the .xodr via
+    # generate_opendrive_world().
+    log.info("'%s' is not a stock CARLA town; loading %s as OpenDRIVE.", stem, xodr_path.name)
+    return None, xodr_path
 
 
 class ScenicCarlaRunner:
@@ -156,6 +294,7 @@ class ScenicCarlaRunner:
         port: int = 2000,
         timestep: float = 0.05,
         max_scenario_seconds: float = 120.0,
+        client_timeout_s: float = 180.0,
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -168,6 +307,10 @@ class ScenicCarlaRunner:
         self.port = port
         self.timestep = timestep
         self.max_scenario_seconds = max_scenario_seconds
+        # Networking timeout for the CARLA client. Building a mesh from raw
+        # OpenDRIVE is a single blocking call that can take minutes on a
+        # large map, so this is far longer than a stock town would need.
+        self.client_timeout_s = client_timeout_s
 
     # ------------------------------------------------------------------
     def run_file(self, scenic_path: Path, num_runs: int = 10) -> None:
@@ -226,15 +369,23 @@ class ScenicCarlaRunner:
             )
             scene, _ = scenario.generate(maxIterations=2000)
 
-            sim = CarlaSimulator(
-                carla_map=carla_map,
-                map_path=xodr_path,
-                address=self.address,
-                port=self.port,
-                timeout=20,
-                render=False,
-                timestep=self.timestep,
+            # Only raw-OpenDRIVE ingest needs the tuned mesh settings; a
+            # stock town is loaded by name and never builds a mesh.
+            mesh_ctx = (
+                _tuned_opendrive_generation(OPENDRIVE_MESH_PARAMS)
+                if carla_map is None
+                else contextlib.nullcontext()
             )
+            with mesh_ctx:
+                sim = CarlaSimulator(
+                    carla_map=carla_map,
+                    map_path=xodr_path,
+                    address=self.address,
+                    port=self.port,
+                    timeout=self.client_timeout_s,
+                    render=False,
+                    timestep=self.timestep,
+                )
             ctx.world = sim.world
             ctx.client = sim.client
 
