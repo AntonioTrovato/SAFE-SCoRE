@@ -1,6 +1,6 @@
-# CLAUDE.md
+# Architecture
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file documents the internal structure, package layout, and key mechanisms of the SAFE-SCoRE codebase, for anyone working on it.
 
 ## Project overview
 
@@ -8,7 +8,7 @@ SAFE-SCoRE is a SOTIF-aligned (ISO 21448) evaluation framework for comparing aut
 
 The stage separation is fundamental to the codebase: **scenario execution + logging** (`src/runner/` for Scenic/CARLA, or an externally-integrated generator using `src/data_gathering/carlaBasicLogger.py` directly) → **post-execution SOTIF enrichment and analysis** (`src/data_gathering/enriching/`, `src/pipeline/`, `src/analysis/`).
 
-All Python source lives under `src/`, organized into packages: `src/runner`, `src/data_gathering` (+ `src/data_gathering/enriching`), `src/pipeline`, `src/analysis`, `src/utils`. `src/` itself is deliberately a plain folder, not a package (no `src/__init__.py`) — only the actual packages inside it have `__init__.py`. This means cross-package imports *inside* the code never use a `src.` prefix (e.g. `from utils.carla_help import ...`, `from data_gathering.carlaBasicLogger import ...`); the `src.` prefix only ever appears in the `python -m src.<pkg>.run_*` invocation used to run something from the repo root, since that's the path needed to locate the entry script from there. The three top-level entry scripts live inside their respective package (`src/pipeline/run_pipeline.py`, `src/analysis/run_analysis.py`, `src/runner/run_experiment.py`) rather than at the repo root. Non-code assets stay at the repo root: `config/` (the ODD/TC YAML), `outputs/`, `docs/`, `scenic_example/`.
+All Python source lives under `src/`, organized into packages: `src/runner`, `src/converter` (OpenSCENARIO/`.xosc` → Scenic conversion, see below), `src/data_gathering` (+ `src/data_gathering/enriching`), `src/pipeline`, `src/analysis`, `src/utils`. `src/` itself is deliberately a plain folder, not a package (no `src/__init__.py`) — only the actual packages inside it have `__init__.py`. This means cross-package imports *inside* the code never use a `src.` prefix (e.g. `from utils.carla_help import ...`, `from data_gathering.carlaBasicLogger import ...`); the `src.` prefix only ever appears in the `python -m src.<pkg>.run_*` invocation used to run something from the repo root, since that's the path needed to locate the entry script from there. The three top-level entry scripts live inside their respective package (`src/pipeline/run_pipeline.py`, `src/analysis/run_analysis.py`, `src/runner/run_experiment.py`) rather than at the repo root. Non-code assets stay at the repo root: `config/` (the ODD/TC YAML), `outputs/`, `docs/`, `scenic_example/`.
 
 ## Environment & setup
 
@@ -37,6 +37,8 @@ Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_ru
 Key mechanism (`src/runner/scenic_carla_runner.py` + `src/runner/recorder.py`): Scenic's `simulator.simulate()` owns the tick loop internally, so there's no external per-tick hook to call into `CarlaBasicLogger`. Instead, the runner builds a temp copy of each `.scenic` file (map path rewritten to an absolute path) with a small Scenic `monitor` appended, which calls `runner.recorder.on_monitor_step()` once per simulated step; that function lazily builds a `CarlaBasicLogger` + `ViolationMonitor` + collision/lane-invasion sensors on its first call (exactly what `docs/integration.md` describes for any generator) and calls `update_frame()` every step. **`src/data_gathering/carlaBasicLogger.py` and `violationMonitor.py` are reused completely unmodified** by this path.
 
 The runner also snapshots a `world_state` block into each log (raw CARLA weather floats, actor counts, map name, ego speed limit, mission timeout) — this is what the config-driven ODD computation (below) reads instead of a generator-specific scenario-metadata dict.
+
+**Non-`.scenic` input (`_ensure_scenic_twins()` in `scenic_carla_runner.py`).** `run_directory()` scans `--input_dir` recursively before anything else runs, looking for files whose suffix is registered as convertible (`_CONVERTIBLE_SUFFIXES`, currently just `.xosc`). Each one is run through a pluggable converter (`src/converter/CARLA_converter.py:convert_file`, selected via `DEFAULT_XOSC_CONVERTER`/`SAFE_SCORE_XOSC_CONVERTER`, a `"module:function"` spec) and its output is written as a `.scenic` twin right next to it (same name, `.scenic` extension) — in place, overwriting any twin from a previous run so results always reflect the current converter. `.scenic` files and everything non-convertible (map files such as `.xodr`/`.snet`, readmes, ...) are never touched or moved, so any relative path a scenario uses to reference them (e.g. `param map = localPath('Town.xodr')`) keeps working unchanged. `run_directory()` then simply executes every `.scenic` file found under `--input_dir` (hand-written and converted alike) via a plain recursive glob.
 
 ## Running the enrichment/analysis pipelines
 

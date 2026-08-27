@@ -21,7 +21,6 @@ import importlib
 import logging
 import os
 import re
-import shutil
 import sys
 import tempfile
 import time
@@ -158,7 +157,7 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 #
 #     SAFE_SCORE_XOSC_CONVERTER=mypkg.my_converter:convert
 #
-DEFAULT_XOSC_CONVERTER = "runner.CARLA_converter:convert_file"
+DEFAULT_XOSC_CONVERTER = "converter.CARLA_converter:convert_file"
 
 
 def resolve_converter(spec: Optional[str] = None):
@@ -213,49 +212,39 @@ def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
     return Path(written)
 
 
-def _prepare_scenic_input_dir(input_dir: Path, work_dir: Path) -> Path:
+def _ensure_scenic_twins(input_dir: Path) -> None:
     """
-    Ensures every scenario to be executed is a .scenic file.
+    Ensures every convertible scenario file (see _CONVERTIBLE_SUFFIXES, e.g.
+    .xosc) found recursively under input_dir has an up-to-date .scenic twin
+    sitting right next to it (same name, .scenic extension), so
+    run_directory()'s plain `rglob("*.scenic")` picks it up alongside any
+    hand-written .scenic files.
 
-    If input_dir already contains only .scenic files, it is returned
-    unchanged. Otherwise, every non-.scenic file found (recursively) is
-    passed through _convert_to_scenic(), and the full resulting set - the
-    already-.scenic files plus the newly-converted ones - is assembled
-    into a fresh folder under work_dir, which is returned instead and used
-    as the actual input for the rest of the run.
+    Nothing is moved or copied elsewhere: .scenic files and non-convertible
+    files (map files such as .xodr/.snet, readmes, ...) are never touched,
+    so whatever relative paths a scenario uses to reference them keep
+    working unchanged. Twins are (re)written in place on every call, rather
+    than skipped when already present, so a rerun always reflects the
+    current converter's output instead of a stale one from a previous run.
     """
     input_dir = Path(input_dir)
-    all_files = [p for p in input_dir.rglob("*") if p.is_file()]
-    scenic_files = [p for p in all_files if p.suffix == ".scenic"]
-    # Only genuine scenario files are converted; anything else living in the
-    # input folder (maps, READMEs, ...) is left alone - converted scenarios
-    # still reference those maps by their original path.
-    other_files = [p for p in all_files if p.suffix.lower() in _CONVERTIBLE_SUFFIXES]
-
-    if not other_files:
-        return input_dir
+    convertible_files = [
+        p for p in input_dir.rglob("*")
+        if p.is_file() and p.suffix.lower() in _CONVERTIBLE_SUFFIXES
+    ]
+    if not convertible_files:
+        return
 
     log.info(
-        "Found %d convertible non-.scenic file(s) in %s alongside %d .scenic file(s); converting to .scenic.",
-        len(other_files), input_dir, len(scenic_files),
+        "Found %d convertible non-.scenic file(s) in %s; writing .scenic twins in place.",
+        len(convertible_files), input_dir,
     )
 
-    converted_dir = work_dir / "converted_scenic_input"
-    converted_dir.mkdir(parents=True, exist_ok=True)
-
-    for src in scenic_files:
-        dest = converted_dir / src.relative_to(input_dir)
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(src, dest)
-
-    for src in other_files:
-        dest = (converted_dir / src.relative_to(input_dir)).with_suffix(".scenic")
-        dest.parent.mkdir(parents=True, exist_ok=True)
+    for src in convertible_files:
+        dest = src.with_suffix(".scenic")
         converted_path = _convert_to_scenic(src, dest)
         if converted_path is None:
             log.warning("Could not convert %s - skipping.", src)
-
-    return converted_dir
 
 
 def _carla_town_from_scenic(scenic_path: Path) -> tuple[Optional[str], Optional[Path]]:
@@ -419,7 +408,8 @@ class ScenicCarlaRunner:
 
     # ------------------------------------------------------------------
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:
-        input_dir = _prepare_scenic_input_dir(Path(input_dir), work_dir=self.output_dir)
+        input_dir = Path(input_dir)
+        _ensure_scenic_twins(input_dir)
         scenic_files = sorted(input_dir.rglob("*.scenic"))
         if not scenic_files:
             raise FileNotFoundError(f"No .scenic file found in {input_dir}")

@@ -97,6 +97,7 @@ All Python source lives under `src/`, organized by responsibility:
 ```
 src/
 ├── runner/        Stage 0: executes .scenic scenarios on CARLA (run_experiment.py)
+├── converter/     OpenSCENARIO (.xosc) → Scenic conversion, used by runner/ for non-.scenic input
 ├── data_gathering/ Base logging (CarlaBasicLogger, ViolationMonitor) + enrichment scripts
 │   └── enriching/  ODD/hazard/final-report computation, config-driven via config/sotif_odd_tc.yaml
 ├── pipeline/      Stage 1 orchestration (run_pipeline.py, SOTIFPipeline)
