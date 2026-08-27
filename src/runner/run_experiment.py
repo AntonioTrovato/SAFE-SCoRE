@@ -70,6 +70,28 @@ def main() -> None:
         "time, e.g. a stalled/gridlocked pileup, which would otherwise never end.",
     )
     parser.add_argument(
+        "--carla_exe",
+        default=None,
+        help="Path to CarlaUE4.exe. If set, a crashed/unreachable CARLA server is "
+        "detected before each run and restarted automatically, sacrificing only the "
+        "run that was in flight when it died. Without it, a crashed server is fatal "
+        "and must be restarted manually.",
+    )
+    parser.add_argument(
+        "--carla_launch_args",
+        default="",
+        help="Extra command-line flags passed to CarlaUE4.exe on restart, as a single "
+        "quoted string (e.g. \"-RenderOffScreen -quality-level=Low\"). Ignored if "
+        "--carla_exe is not set.",
+    )
+    parser.add_argument(
+        "--carla_boot_timeout",
+        type=float,
+        default=90.0,
+        help="How long to wait (s) for a restarted CARLA server to accept connections "
+        "before giving up.",
+    )
+    parser.add_argument(
         "--skip_enrichment",
         action="store_true",
         help="Only execute the scenarios, without running the SOTIF enrichment pipeline afterwards",
@@ -90,12 +112,20 @@ def main() -> None:
         max_scenario_seconds=args.max_scenario_seconds,
         client_timeout_s=args.client_timeout,
         max_wall_seconds=args.max_wall_seconds,
+        carla_exe=args.carla_exe,
+        carla_launch_args=args.carla_launch_args,
+        carla_boot_timeout_s=args.carla_boot_timeout,
     )
-    runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
+    try:
+        runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
 
-    if not args.skip_enrichment:
-        pipeline = SOTIFPipeline(REPO_ROOT)
-        pipeline.run()
+        if not args.skip_enrichment:
+            pipeline = SOTIFPipeline(REPO_ROOT)
+            pipeline.run()
+    finally:
+        # Only stops CARLA if this run launched it itself via --carla_exe;
+        # a no-op otherwise (e.g. a server you started and want to keep).
+        runner.shutdown()
 
 
 if __name__ == "__main__":

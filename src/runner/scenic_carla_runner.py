@@ -19,8 +19,11 @@ from __future__ import annotations
 import contextlib
 import importlib
 import logging
+import multiprocessing
 import os
 import re
+import shlex
+import subprocess
 import sys
 import tempfile
 import time
@@ -61,8 +64,16 @@ _CARLA_TOWN_RE = re.compile(r"^Town\d+", re.IGNORECASE)
 OPENDRIVE_MESH_PARAMS = {
     "vertex_distance": 1.0,        # finer tessellation (default 2.0)
     "max_road_length": 50.0,
-    "wall_height": 3.0,            # taller side barriers (default 1.0)
-    "additional_width": 3.0,       # wider drivable margin (default 0.6)
+    # wall_height/additional_width: taller side barriers / wider drivable
+    # margin than CARLA's defaults (1.0 / 0.6), tuned to stop vehicles
+    # falling through gaps in the generated mesh. Overridable via env vars
+    # because the right value appears to be CARLA-version-sensitive: under
+    # 0.9.15 these were seen to intrude on a spawn point that was clear
+    # under 0.9.16, rejecting the spawn (see SimulationCreationError:
+    # "Unable to spawn object"). Lower them if you hit that; raise them if
+    # actors fall through the road again.
+    "wall_height": float(os.environ.get("SAFE_SCORE_OPENDRIVE_WALL_HEIGHT", 3.0)),
+    "additional_width": float(os.environ.get("SAFE_SCORE_OPENDRIVE_ADDITIONAL_WIDTH", 3.0)),
     "smooth_junctions": True,
     "enable_mesh_visibility": True,
 }
@@ -89,6 +100,33 @@ def _tuned_opendrive_generation(params: dict):
         yield
     finally:
         carla.Client.generate_opendrive_world = original
+
+
+@contextlib.contextmanager
+def _spawn_diagnostics(scenario_id: str, run_index: int):
+    """Temporarily wraps World.try_spawn_actor to log each spawn attempt's
+    blueprint and location plus whether CARLA accepted it, so a bare
+    "Unable to spawn object" from Scenic (which doesn't say which of
+    several objects failed) can be traced back to the actual rejected
+    blueprint/transform.
+    """
+    original = carla.World.try_spawn_actor
+
+    def _patched(world, blueprint, transform, *args, **kwargs):
+        actor = original(world, blueprint, transform, *args, **kwargs)
+        loc = transform.location
+        status = "spawned" if actor is not None else "REJECTED"
+        log.info(
+            "[%s] run %d: spawn %s at (%.2f, %.2f, %.2f) -> %s",
+            scenario_id, run_index, blueprint.id, loc.x, loc.y, loc.z, status,
+        )
+        return actor
+
+    carla.World.try_spawn_actor = _patched
+    try:
+        yield
+    finally:
+        carla.World.try_spawn_actor = original
 
 _MONITOR_SNIPPET = """
 
@@ -273,6 +311,108 @@ def _carla_town_from_scenic(scenic_path: Path) -> tuple[Optional[str], Optional[
     return None, xodr_path
 
 
+def _run_once_worker(
+    tmp_scenic_path: str,
+    scenario_id: str,
+    run_index: int,
+    carla_map: Optional[str],
+    xodr_path: Optional[str],
+    timeout_s: float,
+    max_steps: int,
+    *,
+    tool_name: str,
+    engine: str,
+    address: str,
+    port: int,
+    timestep: float,
+    output_dir: str,
+    client_timeout_s: float,
+    max_wall_seconds: float,
+) -> None:
+    """Runs one scenario execution to completion. Module-level (not a
+    method) and only plain/picklable arguments, so it can be launched as a
+    multiprocessing.Process target by ScenicCarlaRunner._run_once - see
+    that method's docstring for why a subprocess is needed here at all.
+    """
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+
+    ctx = RunnerContext(
+        world=None,  # filled in once the simulator connects
+        client=None,
+        tool=tool_name,
+        generation_id=engine,
+        scenario_id=scenario_id,
+        run_index=run_index,
+        output_dir=output_dir,
+        delta_time=timestep,
+        timeout_s=timeout_s,
+        wall_timeout_s=max_wall_seconds,
+    )
+
+    sim = None
+    try:
+        scenario = scenic.scenarioFromFile(
+            tmp_scenic_path,
+            model="scenic.simulators.carla.model",
+            mode2D=True,
+            params={"_ss_ctx": ctx},
+        )
+        scene, _ = scenario.generate(maxIterations=2000)
+
+        # Only raw-OpenDRIVE ingest needs the tuned mesh settings; a
+        # stock town is loaded by name and never builds a mesh.
+        mesh_ctx = (
+            _tuned_opendrive_generation(OPENDRIVE_MESH_PARAMS)
+            if carla_map is None
+            else contextlib.nullcontext()
+        )
+        with mesh_ctx:
+            sim = CarlaSimulator(
+                carla_map=carla_map,
+                map_path=xodr_path,
+                address=address,
+                port=port,
+                timeout=client_timeout_s,
+                render=False,
+                timestep=timestep,
+            )
+        ctx.world = sim.world
+        ctx.client = sim.client
+        log.info("[%s] run %d: connected to map '%s'", scenario_id, run_index, ctx.world.get_map().name)
+
+        t_start = time.time()
+        ctx.run_started_at = t_start
+        with _spawn_diagnostics(scenario_id, run_index):
+            simulation = sim.simulate(scene, maxSteps=max_steps)
+        wall_time = time.time() - t_start
+
+        if simulation is None:
+            log.warning("[%s] run %d: simulation rejected by Scenic", scenario_id, run_index)
+            return
+
+        log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
+    except RunWallClockTimeout as exc:
+        log.warning("[%s] run %d aborted: %s", scenario_id, run_index, exc)
+    except Exception:
+        log.error("[%s] run %d failed:\n%s", scenario_id, run_index, traceback.format_exc())
+    finally:
+        if ctx.logger is not None and not ctx.logger.ended:
+            filename = f"{scenario_id}_run_{run_index:02d}_log_basic.json"
+            try:
+                ctx.logger.finalize_and_save(filename=filename)
+            except Exception:
+                log.error(
+                    "[%s] run %d: error in finalize_and_save:\n%s",
+                    scenario_id, run_index, traceback.format_exc(),
+                )
+        ctx.destroy_sensors()
+        if sim is not None:
+            try:
+                sim.destroy()
+            except Exception:
+                pass
+
+
 class ScenicCarlaRunner:
     def __init__(
         self,
@@ -285,6 +425,9 @@ class ScenicCarlaRunner:
         max_scenario_seconds: float = 120.0,
         client_timeout_s: float = 180.0,
         max_wall_seconds: float = 300.0,
+        carla_exe: Optional[str] = None,
+        carla_launch_args: str = "",
+        carla_boot_timeout_s: float = 90.0,
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -307,6 +450,81 @@ class ScenicCarlaRunner:
         # longer than that in wall-clock terms, so the step cap alone never
         # ends the run. Checked once per simulated step (see on_monitor_step).
         self.max_wall_seconds = max_wall_seconds
+        # Auto-recovery from a crashed CARLA server (e.g. the UE4 landscape
+        # LOD-thread access violation seen on repeated world reloads - not
+        # fixable from here, it's an engine bug). carla_exe is the path to
+        # CarlaUE4.exe; without it a dead server is a fatal error, same as
+        # before, since there is nothing to relaunch.
+        self.carla_exe = Path(carla_exe).resolve() if carla_exe else None
+        self.carla_launch_args = shlex.split(carla_launch_args) if carla_launch_args else []
+        self.carla_boot_timeout_s = carla_boot_timeout_s
+        self._carla_proc: Optional[subprocess.Popen] = None
+
+    # ------------------------------------------------------------------
+    def _carla_alive(self, timeout_s: float = 5.0) -> bool:
+        """Cheap liveness probe - a fresh short-timeout client asking for
+        the server version, independent of self.client_timeout_s (which is
+        tuned for slow map generation, not fast failure detection)."""
+        try:
+            probe = carla.Client(self.address, self.port)
+            probe.set_timeout(timeout_s)
+            probe.get_server_version()
+            return True
+        except Exception:
+            return False
+
+    def _restart_carla_server(self) -> None:
+        if self.carla_exe is None:
+            raise RuntimeError(
+                "CARLA server at "
+                f"{self.address}:{self.port} is unreachable and no --carla_exe was "
+                "configured, so it cannot be restarted automatically. Start it "
+                "manually and rerun."
+            )
+
+        log.warning("CARLA server unreachable; restarting it (%s)...", self.carla_exe)
+
+        if self._carla_proc is not None and self._carla_proc.poll() is None:
+            self._carla_proc.terminate()
+            try:
+                self._carla_proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self._carla_proc.kill()
+        else:
+            # Either we never launched it ourselves (first crash of the run,
+            # started manually) or it already exited after crashing. Best-
+            # effort clean up any leftover process so it isn't still holding
+            # the port when we launch a fresh one.
+            for image in ("CarlaUE4-Win64-Shipping.exe", "CarlaUE4.exe"):
+                subprocess.run(["taskkill", "/IM", image, "/F"], capture_output=True)
+
+        self._carla_proc = subprocess.Popen([str(self.carla_exe), *self.carla_launch_args])
+
+        deadline = time.time() + self.carla_boot_timeout_s
+        while time.time() < deadline:
+            if self._carla_alive():
+                log.info("CARLA server back up after restart.")
+                return
+            time.sleep(2.0)
+        raise RuntimeError(
+            f"CARLA server did not come back up within {self.carla_boot_timeout_s:.0f}s "
+            "of restarting it."
+        )
+
+    def shutdown(self) -> None:
+        """Stops the CARLA server this runner itself launched via
+        --carla_exe, if any. A no-op if CARLA was already running when the
+        pipeline started (nothing to clean up) or --carla_exe wasn't set."""
+        if self._carla_proc is None or self._carla_proc.poll() is not None:
+            return
+        log.info("Stopping CARLA server (%s)...", self.carla_exe)
+        self._carla_proc.terminate()
+        try:
+            self._carla_proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self._carla_proc.kill()
+            self._carla_proc.wait()
+        self._carla_proc = None
 
     # ------------------------------------------------------------------
     def run_file(self, scenic_path: Path, num_runs: int = 10) -> None:
@@ -323,6 +541,8 @@ class ScenicCarlaRunner:
 
             for run_index in range(1, num_runs + 1):
                 log.info("[%s] run %d/%d", scenario_id, run_index, num_runs)
+                if not self._carla_alive():
+                    self._restart_carla_server()
                 self._run_once(
                     tmp_scenic_path=tmp_scenic_path,
                     scenario_id=scenario_id,
@@ -343,79 +563,57 @@ class ScenicCarlaRunner:
         timeout_s: float,
         max_steps: int,
     ) -> None:
-        ctx = RunnerContext(
-            world=None,  # filled in once the simulator connects
-            client=None,
-            tool=self.tool_name,
-            generation_id=self.engine,
-            scenario_id=scenario_id,
-            run_index=run_index,
-            output_dir=str(self.output_dir),
-            delta_time=self.timestep,
-            timeout_s=timeout_s,
-            wall_timeout_s=self.max_wall_seconds,
-        )
-
-        sim = None
-        try:
-            scenario = scenic.scenarioFromFile(
+        # Runs the actual scenario in its own OS process, so a hard
+        # wall-clock timeout can always regain control by killing the
+        # process, even if a native call inside it never returns (e.g.
+        # CARLA's client stuck endlessly retrying a dead server connection
+        # after a crash - no in-process check, including the tick-level
+        # RunWallClockTimeout, can ever run in that case).
+        proc = multiprocessing.Process(
+            target=_run_once_worker,
+            args=(
                 str(tmp_scenic_path),
-                model="scenic.simulators.carla.model",
-                mode2D=True,
-                params={"_ss_ctx": ctx},
+                scenario_id,
+                run_index,
+                carla_map,
+                str(xodr_path) if xodr_path is not None else None,
+                timeout_s,
+                max_steps,
+            ),
+            kwargs=dict(
+                tool_name=self.tool_name,
+                engine=self.engine,
+                address=self.address,
+                port=self.port,
+                timestep=self.timestep,
+                output_dir=str(self.output_dir),
+                client_timeout_s=self.client_timeout_s,
+                max_wall_seconds=self.max_wall_seconds,
+            ),
+        )
+        proc.start()
+        # Grace beyond max_wall_seconds lets the worker's own internal
+        # RunWallClockTimeout fire and exit cleanly (it saves the partial
+        # log) when it can; this join timeout is only the backstop for when
+        # it can't even get that far.
+        proc.join(timeout=self.max_wall_seconds + 30.0)
+        if proc.is_alive():
+            log.warning(
+                "[%s] run %d: worker unresponsive past its wall-clock cap "
+                "(likely stuck in a native call, e.g. a dead CARLA connection "
+                "retry loop) - killing it",
+                scenario_id, run_index,
             )
-            scene, _ = scenario.generate(maxIterations=2000)
-
-            # Only raw-OpenDRIVE ingest needs the tuned mesh settings; a
-            # stock town is loaded by name and never builds a mesh.
-            mesh_ctx = (
-                _tuned_opendrive_generation(OPENDRIVE_MESH_PARAMS)
-                if carla_map is None
-                else contextlib.nullcontext()
+            proc.terminate()
+            proc.join(timeout=10)
+            if proc.is_alive():
+                proc.kill()
+                proc.join()
+        elif proc.exitcode != 0:
+            log.warning(
+                "[%s] run %d: worker process exited abnormally (code %s)",
+                scenario_id, run_index, proc.exitcode,
             )
-            with mesh_ctx:
-                sim = CarlaSimulator(
-                    carla_map=carla_map,
-                    map_path=xodr_path,
-                    address=self.address,
-                    port=self.port,
-                    timeout=self.client_timeout_s,
-                    render=False,
-                    timestep=self.timestep,
-                )
-            ctx.world = sim.world
-            ctx.client = sim.client
-
-            t_start = time.time()
-            ctx.run_started_at = t_start
-            simulation = sim.simulate(scene, maxSteps=max_steps)
-            wall_time = time.time() - t_start
-
-            if simulation is None:
-                log.warning("[%s] run %d: simulation rejected by Scenic", scenario_id, run_index)
-                return
-
-            log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
-        except RunWallClockTimeout as exc:
-            log.warning("[%s] run %d aborted: %s", scenario_id, run_index, exc)
-        except Exception:
-            log.error("[%s] run %d failed:\n%s", scenario_id, run_index, traceback.format_exc())
-        finally:
-            if ctx.logger is not None and not ctx.logger.ended:
-                filename = f"{scenario_id}_run_{run_index:02d}_log_basic.json"
-                try:
-                    ctx.logger.finalize_and_save(filename=filename)
-                except Exception:
-                    log.error(
-                        "[%s] run %d: error in finalize_and_save:\n%s",
-                        scenario_id, run_index, traceback.format_exc(),
-                    )
-            ctx.destroy_sensors()
-            if sim is not None:
-                try:
-                    sim.destroy()
-                except Exception:
-                    pass
 
     # ------------------------------------------------------------------
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:

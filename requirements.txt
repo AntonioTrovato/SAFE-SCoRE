@@ -1,4 +1,4 @@
-carla==0.9.16
+carla==0.9.15
 ConfigParser==7.2.0
 GPUtil==1.4.0
 imageio==2.37.3

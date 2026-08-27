@@ -178,7 +178,33 @@ This executes every `.scenic` file found (recursively) under `--input_dir` 10 ti
 
 Useful flags:
 - `--engine {behavior_agent,autoware}` (default `behavior_agent`): drive the ego with Scenic's own compiled behavior, or connect instead to a remote CARLA+Autoware service via `--address`/`--port`.
+- `--max_wall_seconds` (default `300`): real-world (wall-clock) cap per execution - see "CARLA server management" below.
+- `--carla_exe`, `--carla_launch_args`, `--carla_boot_timeout`: let the pipeline launch and, if it crashes, restart the CARLA server itself, and shut it down automatically when the pipeline finishes - see below.
 - `--skip_enrichment`: only execute the scenarios, without running Stage 1 afterwards (e.g. to inspect the raw base logs first).
+
+Instead of starting CARLA yourself, you can point `--carla_exe` at `CarlaUE4.exe` and let the pipeline launch (and, if needed, relaunch) it for you:
+
+```bash
+python -m src.runner.run_experiment \
+  --input_dir scenic_example/example_suite \
+  --output_folder example_suite_output \
+  --num_runs 10 \
+  --max_wall_seconds 60 \
+  --carla_exe "C:\path\to\your\CARLA\CarlaUE4.exe" \
+  --carla_launch_args="-RenderOffScreen -quality-level=Low" \
+  --carla_boot_timeout 120
+```
+
+### CARLA server management and crash recovery
+
+Two independent problems can otherwise stall or silently derail a long batch of runs, so the runner guards against both:
+
+- **A scenario can stall without ever finishing** (e.g. a pile-up that leaves vehicles unable to move). CARLA's own `maxSteps` cap only bounds *simulated* time, not wall-clock time - if ticks themselves start taking far longer than real time, it never fires. `--max_wall_seconds` is a genuine wall-clock backstop, checked once per simulated step, that aborts and saves whatever was recorded so far instead of hanging.
+- **CARLA itself can crash** (observed as a `CarlaUE4-Win64-Shipping.exe` "Fatal error!" access violation in the Unreal Engine landscape renderer, triggered by repeatedly reloading the same map across runs - an engine bug, not something this repo can fix directly). When that happens, CARLA's client library can get stuck endlessly retrying the dead connection without ever raising a Python exception, so no in-process check could reliably catch it. To guarantee recovery regardless, each execution runs in its own OS process: the parent waits up to `--max_wall_seconds` (plus a short grace period) and force-kills the process if it hasn't returned by then - bypassing any crash dialog instead of waiting for it to be dismissed by hand. If `--carla_exe` was given, the pipeline then checks whether the server is still reachable before the *next* run and restarts it if not, abandoning only the run that was in flight when the crash happened.
+
+  Known limitation: right after a crash, CARLA's lightweight liveness probe can still report the server as reachable for a little while even though it's already unable to actually run a scenario, so the very next run can occasionally also stall and get killed before the restart is triggered on the run after that. Recovery still happens, just one run later than ideal in that case.
+
+If `--carla_exe` was used to launch (or restart) the server, it is stopped automatically once the pipeline finishes - whether it completes normally or exits on an error. If CARLA was already running when you started (no `--carla_exe`), it is left untouched.
 
 If you only want to (re-)run Stage 1 on datasets you already have (e.g. produced by an externally-integrated tool per `docs/integration.md`), you can run it standalone:
 
