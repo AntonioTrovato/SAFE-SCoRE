@@ -14,6 +14,7 @@ and the scenario's `ego` object (Scenic's driving domain always binds `ego`).
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -22,6 +23,18 @@ import carla
 
 from data_gathering.carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
 from data_gathering.violationMonitor import ViolationMonitor
+
+
+class RunWallClockTimeout(RuntimeError):
+    """Raised from on_monitor_step() when a run's real (wall-clock) time
+    exceeds RunnerContext.wall_timeout_s.
+
+    maxSteps (see ScenicCarlaRunner) only bounds *simulated* time - it
+    assumes each tick costs roughly one real-time timestep. During a pileup
+    CARLA's physics solver can take many real seconds per tick, so the step
+    count stays capped while wall-clock time keeps growing unbounded. This
+    exception gives the runner a real-time backstop for that case.
+    """
 
 
 @dataclass
@@ -35,6 +48,8 @@ class RunnerContext:
     output_dir: str
     delta_time: float
     timeout_s: float
+    wall_timeout_s: Optional[float] = None
+    run_started_at: Optional[float] = None
 
     logger: Optional[CarlaBasicLogger] = None
     violation_monitor: Optional[ViolationMonitor] = None
@@ -139,6 +154,16 @@ def _first_time_setup(ctx: RunnerContext, ego_actor: carla.Vehicle) -> None:
 
 def on_monitor_step(ctx: RunnerContext, ego: Any) -> None:
     """Called once per simulated step by the injected Scenic monitor."""
+    if ctx.wall_timeout_s is not None and ctx.run_started_at is not None:
+        elapsed = time.time() - ctx.run_started_at
+        if elapsed > ctx.wall_timeout_s:
+            raise RunWallClockTimeout(
+                f"[{ctx.scenario_id}] run {ctx.run_index}: exceeded wall-clock cap of "
+                f"{ctx.wall_timeout_s:.0f}s (elapsed {elapsed:.0f}s) - simulation ticks are "
+                "taking far longer than real time (e.g. a stalled pileup), so the step-count "
+                "cap alone would never have stopped it."
+            )
+
     ego_actor = ego.carlaActor
     if ctx.logger is None:
         _first_time_setup(ctx, ego_actor)

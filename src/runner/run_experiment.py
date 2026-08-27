@@ -61,6 +61,15 @@ def main() -> None:
         "as raw OpenDRIVE, where world generation is one long blocking call.",
     )
     parser.add_argument(
+        "--max_wall_seconds",
+        type=float,
+        default=300.0,
+        help="Real-world (wall-clock) cap per execution, checked once per simulated "
+        "step. Unlike --max_scenario_seconds (which bounds simulated time via a step "
+        "count), this catches runs where ticks themselves take far longer than real "
+        "time, e.g. a stalled/gridlocked pileup, which would otherwise never end.",
+    )
+    parser.add_argument(
         "--skip_enrichment",
         action="store_true",
         help="Only execute the scenarios, without running the SOTIF enrichment pipeline afterwards",
@@ -80,6 +89,7 @@ def main() -> None:
         timestep=args.timestep,
         max_scenario_seconds=args.max_scenario_seconds,
         client_timeout_s=args.client_timeout,
+        max_wall_seconds=args.max_wall_seconds,
     )
     runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
 

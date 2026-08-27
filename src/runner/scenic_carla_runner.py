@@ -38,7 +38,7 @@ import carla  # noqa: E402
 import scenic  # noqa: E402
 from scenic.simulators.carla import CarlaSimulator  # noqa: E402
 
-from runner.recorder import RunnerContext, on_monitor_step  # noqa: E402
+from runner.recorder import RunnerContext, RunWallClockTimeout, on_monitor_step  # noqa: E402
 
 log = logging.getLogger("ScenicCarlaRunner")
 
@@ -284,6 +284,7 @@ class ScenicCarlaRunner:
         timestep: float = 0.05,
         max_scenario_seconds: float = 120.0,
         client_timeout_s: float = 180.0,
+        max_wall_seconds: float = 300.0,
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -300,6 +301,12 @@ class ScenicCarlaRunner:
         # OpenDRIVE is a single blocking call that can take minutes on a
         # large map, so this is far longer than a stock town would need.
         self.client_timeout_s = client_timeout_s
+        # Real-world backstop, independent of max_scenario_seconds. maxSteps
+        # only bounds *simulated* time and assumes each tick costs roughly
+        # one real-time timestep; a stalled pileup can make ticks take much
+        # longer than that in wall-clock terms, so the step cap alone never
+        # ends the run. Checked once per simulated step (see on_monitor_step).
+        self.max_wall_seconds = max_wall_seconds
 
     # ------------------------------------------------------------------
     def run_file(self, scenic_path: Path, num_runs: int = 10) -> None:
@@ -346,6 +353,7 @@ class ScenicCarlaRunner:
             output_dir=str(self.output_dir),
             delta_time=self.timestep,
             timeout_s=timeout_s,
+            wall_timeout_s=self.max_wall_seconds,
         )
 
         sim = None
@@ -379,6 +387,7 @@ class ScenicCarlaRunner:
             ctx.client = sim.client
 
             t_start = time.time()
+            ctx.run_started_at = t_start
             simulation = sim.simulate(scene, maxSteps=max_steps)
             wall_time = time.time() - t_start
 
@@ -387,6 +396,8 @@ class ScenicCarlaRunner:
                 return
 
             log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
+        except RunWallClockTimeout as exc:
+            log.warning("[%s] run %d aborted: %s", scenario_id, run_index, exc)
         except Exception:
             log.error("[%s] run %d failed:\n%s", scenario_id, run_index, traceback.format_exc())
         finally:
