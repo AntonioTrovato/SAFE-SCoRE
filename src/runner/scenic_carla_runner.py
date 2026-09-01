@@ -195,7 +195,7 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 #
 #     SAFE_SCORE_XOSC_CONVERTER=mypkg.my_converter:convert
 #
-DEFAULT_XOSC_CONVERTER = "converter.CARLA_converter:convert_file"
+DEFAULT_XOSC_CONVERTER = "converter.AUTOWARE_converter:convert_file"
 
 
 def resolve_converter(spec: Optional[str] = None):
