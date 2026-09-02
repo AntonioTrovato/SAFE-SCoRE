@@ -49,7 +49,6 @@ behavior LyftAVBehavior(trajectory):
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.EGO_BRAKE_DECEL)
 
-
 behavior ThirdPartyVehicleBehavior():
 
     do FollowLaneBehavior(target_speed=globalParameters.ADV_INITIAL_SPEED) until distance from self to ego < globalParameters.ADV_CUT_IN_DIST_TO_EGO
@@ -59,7 +58,6 @@ behavior ThirdPartyVehicleBehavior():
         target_speed=globalParameters.ADV_SWERVE_SPEED)
 
     do Stop()
-
 
 #################################
 # SPATIAL RELATIONS             #
@@ -75,9 +73,7 @@ advManeuvers = Uniform(*filter(lambda m: m.type is ManeuverType.STRAIGHT, advIni
 
 egoTrajectory = [egoInitLane, egoManeuver.connectingLane, egoManeuver.endLane]
 
-
 egoSpawnPt = new OrientedPoint in egoInitLane.centerline
-
 
 #################################
 # SCENARIO SPECIFICATION        #
@@ -101,7 +97,5 @@ adversary = new Car in advInitLane.centerline,
 require ADV_INIT_DIST_FROM_INTERSECTION[0] < distance from adversary to intersection < ADV_INIT_DIST_FROM_INTERSECTION[1]
 require EGO_INIT_DIST_FROM_INTERSECTION[0] < distance from ego to intersection < EGO_INIT_DIST_FROM_INTERSECTION[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

@@ -48,7 +48,6 @@ behavior CruiseAVBehavior(trajectory):
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.CRUISE_BRAKE)
 
-
 behavior HyundaiBehavior():
     do FollowLaneBehavior(target_speed=globalParameters.HYUNDAI_SPEED, is_oppositeTraffic=True)
 
@@ -95,7 +94,5 @@ adversary = new Car in advInitLane,
 require EGO_INIT_DIST[0] <= (distance to intersection) <= EGO_INIT_DIST[1]
 require ADV_INIT_DIST[0] <= (distance from adversary to intersection) <= ADV_INIT_DIST[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

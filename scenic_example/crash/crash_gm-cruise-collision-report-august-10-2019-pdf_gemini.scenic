@@ -63,7 +63,6 @@ behavior EgoBehavior(trajectory):
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.EGO_BRAKE)
 
-
 behavior PedestrianBehavior():
     do WaitBehavior() until distance from self to ego < globalParameters.PED_YIELD_DIST + 3
     do CrossBehavior()
@@ -129,7 +128,5 @@ require EGO_INIT_DIST[0] <= (distance to intersection) <= EGO_INIT_DIST[1]
 require ADV_INIT_DIST[0] <= (distance from adversary to intersection) <= ADV_INIT_DIST[1]
 require PED_INIT_DIST[0] <= (distance from pedestrian to intersection) <= PED_INIT_DIST[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

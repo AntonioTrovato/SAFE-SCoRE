@@ -6,12 +6,22 @@ compatible with the rest of the SAFE-SCoRE pipeline (same shape as the logs
 produced by external tools via data_gathering.carlaBasicLogger, see
 docs/integration.md / docs/base_log_json.md).
 
-Default engine drives the ego with Scenic's own compiled `behavior` (e.g.
-`EgoBehavior()` in the sample .scenic files) via scenic.simulators.carla -
-no separate CARLA BehaviorAgent needed. The "autoware" engine only changes
-which CARLA server address/port we connect to (see the plan/README note on
-this being a deliberate simplification: the real Autoware bridge contract
-is out of scope for this stage-1 tool).
+Default engine ("behavior_agent") drives the ego with Scenic's own compiled
+`behavior` (e.g. `EgoBehavior()` in the sample .scenic files) via
+scenic.simulators.carla - no separate CARLA BehaviorAgent needed. This path
+is unchanged and unaffected by anything below.
+
+The "autoware" engine instead hands the ego to a running Autoware stack, by
+splitting ownership of the simulation (see runner/autoware_session.py):
+
+    Autoware  owns the map, the ego, its sensors and its control
+    Scenic    owns the clock and every other actor, including their behaviours
+    this file decides where the ego starts and where it is going, and logs
+
+It requires Autoware to already be running against the same CARLA server and
+the same map, launched with CARLA_EXTERNAL_TICK=1 so that it does not also
+advance the world - two tick masters in synchronous mode double-step frames
+and desync sensor data.
 """
 
 from __future__ import annotations
@@ -21,6 +31,7 @@ import importlib
 import logging
 import multiprocessing
 import os
+import random
 import re
 import shlex
 import subprocess
@@ -41,7 +52,12 @@ import carla  # noqa: E402
 import scenic  # noqa: E402
 from scenic.simulators.carla import CarlaSimulator  # noqa: E402
 
-from runner.recorder import RunnerContext, RunWallClockTimeout, on_monitor_step  # noqa: E402
+from runner.recorder import (  # noqa: E402
+    GoalReached,
+    RunnerContext,
+    RunWallClockTimeout,
+    on_monitor_step,
+)
 
 log = logging.getLogger("ScenicCarlaRunner")
 
@@ -328,6 +344,7 @@ def _run_once_worker(
     output_dir: str,
     client_timeout_s: float,
     max_wall_seconds: float,
+    ego_speed_default: float = 11.11,
 ) -> None:
     """Runs one scenario execution to completion. Module-level (not a
     method) and only plain/picklable arguments, so it can be launched as a
@@ -350,6 +367,7 @@ def _run_once_worker(
     )
 
     sim = None
+    session = None
     try:
         scenario = scenic.scenarioFromFile(
             tmp_scenic_path,
@@ -366,31 +384,75 @@ def _run_once_worker(
             if carla_map is None
             else contextlib.nullcontext()
         )
-        with mesh_ctx:
-            sim = CarlaSimulator(
-                carla_map=carla_map,
-                map_path=xodr_path,
-                address=address,
-                port=port,
-                timeout=client_timeout_s,
-                render=False,
-                timestep=timestep,
+
+        with contextlib.ExitStack() as stack:
+            if engine == "autoware":
+                from runner.autoware_session import (
+                    AutowareSession,
+                    autoware_ownership,
+                    scene_ego_speed,
+                    scene_ego_transform,
+                )
+
+                # Seeded per (scenario, run) so a rerun of the same run index
+                # takes the same branches at junctions and gets the same goal.
+                session = AutowareSession(
+                    time_limit_s=timeout_s,
+                    step_period_s=timestep,
+                    rng=random.Random(f"{scenario_id}:{run_index}"),
+                )
+                # The patches must be live before CarlaSimulator is built, or
+                # its constructor reloads the map and destroys Autoware's ego.
+                stack.enter_context(autoware_ownership(session))
+
+            with mesh_ctx:
+                sim = CarlaSimulator(
+                    carla_map=carla_map,
+                    map_path=xodr_path,
+                    address=address,
+                    port=port,
+                    timeout=client_timeout_s,
+                    render=False,
+                    timestep=timestep,
+                )
+            ctx.world = sim.world
+            ctx.client = sim.client
+            log.info(
+                "[%s] run %d: connected to map '%s'",
+                scenario_id, run_index, ctx.world.get_map().name,
             )
-        ctx.world = sim.world
-        ctx.client = sim.client
-        log.info("[%s] run %d: connected to map '%s'", scenario_id, run_index, ctx.world.get_map().name)
 
-        t_start = time.time()
-        ctx.run_started_at = t_start
-        with _spawn_diagnostics(scenario_id, run_index):
-            simulation = sim.simulate(scene, maxSteps=max_steps)
-        wall_time = time.time() - t_start
+            if session is not None:
+                session.attach(sim.world)
+                # Autoware needs the world ticking to finish spawning its ego,
+                # converge localization and plan a route - but Scenic does not
+                # start ticking until simulate() below. Pump ticks across that
+                # gap, and stop before simulate() so there is only ever one
+                # tick master.
+                from runner.autoware_session import TickPump
 
-        if simulation is None:
-            log.warning("[%s] run %d: simulation rejected by Scenic", scenario_id, run_index)
-            return
+                with TickPump(sim.world):
+                    session.prepare(
+                        scene_ego_transform(scene, sim.world),
+                        target_speed=scene_ego_speed(scene) or ego_speed_default,
+                    )
+                ctx.autoware_session = session
 
-        log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
+            t_start = time.time()
+            ctx.run_started_at = t_start
+            with _spawn_diagnostics(scenario_id, run_index):
+                simulation = sim.simulate(scene, maxSteps=max_steps)
+            wall_time = time.time() - t_start
+
+            if simulation is None:
+                log.warning(
+                    "[%s] run %d: simulation rejected by Scenic", scenario_id, run_index
+                )
+                return
+
+            log.info("[%s] run %d completed in %.1fs", scenario_id, run_index, wall_time)
+    except GoalReached as exc:
+        log.info("[%s] run %d finished early: %s", scenario_id, run_index, exc)
     except RunWallClockTimeout as exc:
         log.warning("[%s] run %d aborted: %s", scenario_id, run_index, exc)
     except Exception:
@@ -406,6 +468,8 @@ def _run_once_worker(
                     scenario_id, run_index, traceback.format_exc(),
                 )
         ctx.destroy_sensors()
+        if session is not None:
+            session.finish()
         if sim is not None:
             try:
                 sim.destroy()
@@ -425,9 +489,12 @@ class ScenicCarlaRunner:
         max_scenario_seconds: float = 120.0,
         client_timeout_s: float = 180.0,
         max_wall_seconds: float = 300.0,
+        ego_speed_default: float = 11.11,
         carla_exe: Optional[str] = None,
         carla_launch_args: str = "",
         carla_boot_timeout_s: float = 90.0,
+        autoware_map_path: Optional[str] = None,
+        wsl_distro: str = "Ubuntu-22.04",
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -450,6 +517,11 @@ class ScenicCarlaRunner:
         # longer than that in wall-clock terms, so the step cap alone never
         # ends the run. Checked once per simulated step (see on_monitor_step).
         self.max_wall_seconds = max_wall_seconds
+        # Speed Autoware plans up to when a scenario does not declare one.
+        # Autoware's own default is 4.17 m/s (15 km/h), well below what the
+        # Scenic suites assume, which would leave the ego unable to keep up
+        # with its own traffic.
+        self.ego_speed_default = ego_speed_default
         # Auto-recovery from a crashed CARLA server (e.g. the UE4 landscape
         # LOD-thread access violation seen on repeated world reloads - not
         # fixable from here, it's an engine bug). carla_exe is the path to
@@ -459,6 +531,13 @@ class ScenicCarlaRunner:
         self.carla_launch_args = shlex.split(carla_launch_args) if carla_launch_args else []
         self.carla_boot_timeout_s = carla_boot_timeout_s
         self._carla_proc: Optional[subprocess.Popen] = None
+        # --engine autoware: a CARLA crash also strands Autoware (its
+        # client hangs retrying a dead connection), so recovery has to be
+        # paired. Without a map path we cannot relaunch it, and a crash
+        # stays fatal - same contract as carla_exe.
+        self.autoware_map_path = autoware_map_path
+        self.wsl_distro = wsl_distro
+        self._autoware_proc: Optional[subprocess.Popen] = None
 
     # ------------------------------------------------------------------
     def _carla_alive(self, timeout_s: float = 5.0) -> bool:
@@ -472,6 +551,22 @@ class ScenicCarlaRunner:
             return True
         except Exception:
             return False
+
+
+    def _autoware_alive(self) -> bool:
+        """Whether Autoware can still answer on the routing API.
+
+        Checked per run, not just at startup: its mission_planner container has
+        been seen to segfault mid-suite, after which set_route_points simply
+        never answers and every remaining run burns its full timeout budget
+        before failing. Catching it here turns that into one restart.
+        """
+        from runner.autoware_control import AutowareController
+
+        return AutowareController(distro=self.wsl_distro).nodes_alive(
+            "/planning/mission_planning/mission_planner",
+            "/control/trajectory_follower/controller_node_exe",
+        )
 
     def _restart_carla_server(self) -> None:
         if self.carla_exe is None:
@@ -495,7 +590,11 @@ class ScenicCarlaRunner:
             # started manually) or it already exited after crashing. Best-
             # effort clean up any leftover process so it isn't still holding
             # the port when we launch a fresh one.
-            for image in ("CarlaUE4-Win64-Shipping.exe", "CarlaUE4.exe"):
+            for image in (
+                "CarlaUE4-Win64-Shipping.exe",
+                "CarlaUE4.exe",
+                "CrashReportClient.exe",  # the "Fatal error" dialog
+            ):
                 subprocess.run(["taskkill", "/IM", image, "/F"], capture_output=True)
 
         self._carla_proc = subprocess.Popen([str(self.carla_exe), *self.carla_launch_args])
@@ -515,6 +614,8 @@ class ScenicCarlaRunner:
         """Stops the CARLA server this runner itself launched via
         --carla_exe, if any. A no-op if CARLA was already running when the
         pipeline started (nothing to clean up) or --carla_exe wasn't set."""
+        if self._autoware_proc is not None:
+            self._kill_autoware()
         if self._carla_proc is None or self._carla_proc.poll() is not None:
             return
         log.info("Stopping CARLA server (%s)...", self.carla_exe)
@@ -526,7 +627,136 @@ class ScenicCarlaRunner:
             self._carla_proc.wait()
         self._carla_proc = None
 
+
     # ------------------------------------------------------------------
+    def _kill_autoware(self) -> None:
+        """Stop Autoware, including any stranded instance we did not launch.
+
+        A CARLA crash leaves Autoware alive but useless - its client retries a
+        dead connection forever without raising - so it must be killed before
+        CARLA comes back, or the new server inherits a confused stack.
+        """
+        if self._autoware_proc is not None and self._autoware_proc.poll() is None:
+            self._autoware_proc.terminate()
+            try:
+                self._autoware_proc.wait(timeout=15)
+            except subprocess.TimeoutExpired:
+                self._autoware_proc.kill()
+        self._autoware_proc = None
+        subprocess.run(
+            [
+                "wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+                "pkill -f 'ros2 launch autoware_launch' ; pkill -f component_container ; "
+                "pkill -f autoware_carla_interface ; pkill -f rviz2 ; sleep 3",
+            ],
+            capture_output=True,
+        )
+
+    def _start_autoware(self) -> None:
+        """Launch Autoware and wait until it can actually plan.
+
+        CARLA_EXTERNAL_TICK=1 stops the bridge advancing the world, which also
+        means it cannot finish its own startup unaided - so the world is ticked
+        from here until the stack reports ready (see TickPump).
+        """
+        from runner.autoware_control import AutowareController
+        from runner.autoware_session import TickPump
+
+        cmd = (
+            "cd ~/autoware && source install/setup.bash && "
+            "CARLA_EXTERNAL_TICK=1 ros2 launch autoware_launch e2e_simulator.launch.xml "
+            f"map_path:={self.autoware_map_path} vehicle_model:=sample_vehicle "
+            "sensor_model:=carla_sensor_kit simulator_type:=carla"
+        )
+        # Refuse to start a second stack. Two bridges means two tick masters -
+        # one of them without CARLA_EXTERNAL_TICK - which desyncs sensors,
+        # trips Autoware's duplicated_node_checker, and leaves the ego unable
+        # to engage while everything else looks healthy.
+        leftover = subprocess.run(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             "pgrep -c -f 'autoware_carla_interface --ros-args' || true"],
+            capture_output=True, text=True,
+        ).stdout.strip()
+        if leftover and leftover.split()[-1] not in ("0", ""):
+            log.warning("Found %s leftover Autoware bridge(s); killing before start.", leftover)
+            self._kill_autoware()
+
+        log.warning("Starting Autoware (map_path=%s)...", self.autoware_map_path)
+        self._autoware_proc = subprocess.Popen(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic", cmd],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+        client = carla.Client(self.address, self.port)
+        client.set_timeout(60.0)
+        # Pass the client: Autoware's bridge reloads the map during startup,
+        # which invalidates the world handle the pump was ticking.
+        with TickPump(client.get_world(), client=client):
+            if not AutowareController(distro=self.wsl_distro).wait_ready(timeout_s=240.0):
+                raise RuntimeError(
+                    "Autoware did not become ready after being restarted."
+                )
+        log.info("Autoware is back up.")
+
+    def _recover(self) -> None:
+        """Bring the whole environment back after a CARLA crash.
+
+        Order matters: Autoware first (it is stranded, and would otherwise
+        attach to a half-booted server), then CARLA, then Autoware again.
+        """
+        if self.engine == "autoware":
+            if self.autoware_map_path is None:
+                raise RuntimeError(
+                    "CARLA died and --engine autoware needs Autoware restarted with it, "
+                    "but no --autoware_map_path was given. Restart both manually and rerun."
+                )
+            self._kill_autoware()
+        self._restart_carla_server()
+        if self.engine == "autoware":
+            self._start_autoware()
+
+    # ------------------------------------------------------------------
+    def _map_matches_autoware(self, carla_map: Optional[str], scenario_id: str) -> bool:
+        """Whether this scenario's map is the one Autoware is bound to.
+
+        Autoware loads one map at launch and cannot change it, so a scenario on
+        any other map is unrunnable in this engine. Checked here, before the
+        worker starts, because inside the worker it is already too late: a
+        non-stock map goes down Scenic's raw-OpenDRIVE path, which rebuilds the
+        world under Autoware, hangs the run and takes CARLA down with it.
+
+        Mismatches are skipped rather than fatal, so a mixed-map suite still
+        runs whatever it can - the rest remains available via
+        --engine behavior_agent.
+        """
+        try:
+            probe = carla.Client(self.address, self.port)
+            probe.set_timeout(10.0)
+            current = probe.get_world().get_map().name.split("/")[-1]
+        except RuntimeError:
+            log.warning("could not read the running map; letting [%s] proceed", scenario_id)
+            return True
+
+        if carla_map is None:
+            log.warning(
+                "SKIPPING [%s]: it needs a non-stock map ingested as raw OpenDRIVE, "
+                "which would rebuild the world Autoware is attached to. "
+                "Autoware is running '%s'. Use --engine behavior_agent for this one.",
+                scenario_id, current,
+            )
+            return False
+
+        if carla_map.lower() != current.lower():
+            log.warning(
+                "SKIPPING [%s]: scenario map is '%s' but Autoware is running '%s'. "
+                "Relaunch Autoware with the matching map_path, or use "
+                "--engine behavior_agent.",
+                scenario_id, carla_map, current,
+            )
+            return False
+        return True
+
     def run_file(self, scenic_path: Path, num_runs: int = 10) -> None:
         scenic_path = Path(scenic_path).resolve()
         scenario_id = scenic_path.stem
@@ -536,13 +766,29 @@ class ScenicCarlaRunner:
 
         carla_map, xodr_path = _carla_town_from_scenic(scenic_path)
 
+        if self.engine == "autoware" and not self._map_matches_autoware(carla_map, scenario_id):
+            return
+
         with tempfile.TemporaryDirectory(prefix="safe_score_scenic_") as tmp_dir_str:
             tmp_scenic_path = _prepare_temp_scenic(scenic_path, Path(tmp_dir_str))
 
             for run_index in range(1, num_runs + 1):
                 log.info("[%s] run %d/%d", scenario_id, run_index, num_runs)
                 if not self._carla_alive():
-                    self._restart_carla_server()
+                    self._recover()
+                elif self.engine == "autoware" and not self._autoware_alive():
+                    log.warning(
+                        "Autoware stopped answering (a node has probably died); "
+                        "restarting the environment before the next run."
+                    )
+                    # Deliberately the *paired* recovery, not an Autoware-only
+                    # restart. Autoware's startup calls load_world(<map>), and
+                    # reloading the map CARLA is already running is the known
+                    # UE4 access violation - so restarting Autoware against a
+                    # live CARLA reliably kills CARLA. Restarting CARLA first
+                    # means it comes up on its default map and Autoware's load
+                    # is a genuine change of map.
+                    self._recover()
                 self._run_once(
                     tmp_scenic_path=tmp_scenic_path,
                     scenario_id=scenario_id,
@@ -589,6 +835,7 @@ class ScenicCarlaRunner:
                 output_dir=str(self.output_dir),
                 client_timeout_s=self.client_timeout_s,
                 max_wall_seconds=self.max_wall_seconds,
+                ego_speed_default=self.ego_speed_default,
             ),
         )
         proc.start()

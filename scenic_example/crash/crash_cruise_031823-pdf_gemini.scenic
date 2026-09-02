@@ -41,7 +41,6 @@ behavior CruiseAVBehavior(trajectory):
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.WAYMO_BRAKE)
 
-
 behavior MercedesBehavior(trajectory):
     do FollowTrajectoryBehavior(target_speed=globalParameters.MERCEDES_SPEED, trajectory=trajectory)
 
@@ -89,7 +88,5 @@ require ADV_INIT_DIST_RANGE[0] <= (distance from mercedes_sedan to intersection)
 #terminate when (distance to mercedes_sedan) < CRASH_DIST
 #terminate when (distance to egoSpawnPt) > TERM_DIST or (distance from mercedes_sedan to advSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoManeuver.endLane as egoReachedGoal
 terminate after 20 seconds

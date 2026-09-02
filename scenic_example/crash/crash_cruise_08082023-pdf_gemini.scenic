@@ -54,11 +54,9 @@ behavior WaitBehavior():
     while True:
         wait
 
-
 behavior GoForwardBehavior(throttle):
     while True:
         take SetThrottleAction(throttle)
-
 
 behavior CruiseAVBehavior(trajectory):
     try:
@@ -84,7 +82,6 @@ behavior SemiTrailerTruckBehavior(egoVehicle):
         
         do GoForwardBehavior(throttle=globalParameters.TRUCK_THROTTLE) 
         
-
 
 #################################
 # SPATIAL RELATIONS             #
@@ -126,7 +123,5 @@ adversary = new Car at truckSpawnPt,
 
 require ego.lane == adversary.lane
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record True as egoReachedGoal
 terminate after 20 seconds

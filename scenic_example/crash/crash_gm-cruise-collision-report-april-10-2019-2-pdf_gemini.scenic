@@ -34,11 +34,9 @@ param ADV2_DIST_BEHIND_EGO = VerifaiRange(-35, -40)  # Initial distance of adver
 param EGO_APPROACH_DIST = VerifaiRange(0, 5) # Distance from intersection when ego starts to slow/yield
 param OVERTAKE_COMPLETED_DIST = VerifaiRange(10, 15) # Distance adv1 must be ahead of ego for ego to resume turn
 
-
 EGO_INTERSECTION_DIST = VerifaiRange(10, 15)
 ADV1_INTERSECTION_DIST = VerifaiRange(20, 30)
 ADV2_INTERSECTION_DIST = VerifaiRange(40, 50)
-
 
 TERM_DIST = 70 # Distance ego travels from its spawn point to terminate the scenario
 COLLISION_BUFFER = 2.0 # Factor for collision detection (e.g., sum of lengths / 2 for overlap)
@@ -62,7 +60,6 @@ behavior EgoBehavior(trajectory):
         do FollowTrajectoryBehavior(target_speed=globalParameters.EGO_SPEED_TURN, trajectory=trajectory)
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.EGO_BRAKE)
-
 
 behavior Adv1Behavior(lane):
     # Adversary 1 follows its straight trajectory at a higher speed to overtake ego.
@@ -138,7 +135,5 @@ require EGO_INTERSECTION_DIST - 10 < (distance to intersection) < EGO_INTERSECTI
 require ADV1_INTERSECTION_DIST - 10 < (distance from adversary1 to intersection) < ADV1_INTERSECTION_DIST
 require ADV2_INTERSECTION_DIST - 10 < (distance from adversary2 to intersection) < ADV2_INTERSECTION_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

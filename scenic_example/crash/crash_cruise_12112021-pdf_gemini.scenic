@@ -28,7 +28,6 @@ param ADVERSARY_DIST = VerifaiRange(-15, -25) # Initial distance behind ego
 
 param CYCLIST_SPEED = VerifaiRange(2, 4) # Approx 4-9 MPH
 
-
 EGO_INIT_DIST_TO_INTERSECTION = 20 # Ego's initial distance to the intersection
 param SAFETY_DIST = VerifaiRange(3, 5)
 param BIKE_DIST = VerifaiRange(10, 15)
@@ -60,11 +59,9 @@ behavior CruiseAVBehavior(trajectory):
 behavior AdversaryBehavior():
     do FollowLaneBehavior(target_speed=globalParameters.ADVERSARY_SPEED)
 
-
 behavior CyclingBehavior(speed):
     while True:
         take SetWalkingSpeedAction(speed)
-
 
 behavior CyclistBehavior():
     do WaitBehavior() until withinDistanceToAnyObjs(self, globalParameters.BIKE_DIST + 7)
@@ -73,12 +70,9 @@ behavior CyclistBehavior():
 
     do CyclingBehavior(globalParameters.CYCLIST_SPEED)
 
-
 #################################
 # SPATIAL RELATIONS             #
 #################################
-
-
 
 intersection = Uniform(*filter(lambda i: i.is4Way, network.intersections))
 
@@ -87,13 +81,9 @@ egoManeuver = Uniform(*filter(lambda m: m.type is ManeuverType.STRAIGHT, egoInit
 egoTrajectory = [egoInitLane, egoManeuver.connectingLane, egoManeuver.endLane]
 egoSpawnPt = new OrientedPoint in egoInitLane.centerline
 
-
 # Find a crossing lane for the cyclist
 
-
-
 # Place the cyclist at the start of its crossing path, potentially already in the intersection area
-
 
 #################################
 # SCENARIO SPECIFICATION        #
@@ -116,7 +106,6 @@ adversary = new Car at advSpawnPt,
     with blueprint MODEL,
     with behavior AdversaryBehavior()
 
-
 cyclist = new Bicycle at (egoSpawnPt offset by (-10, globalParameters.BIKE_OFFSET_Y)),
     facing toward ego,
     with blueprint BICYCLE_MODEL,
@@ -129,7 +118,5 @@ cyclist = new Bicycle at (egoSpawnPt offset by (-10, globalParameters.BIKE_OFFSE
 require distance to intersection < EGO_INIT_DIST_TO_INTERSECTION
 # Ensure the cyclist is actually crossing the ego's path (not just parallel)
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

@@ -92,6 +92,28 @@ def main() -> None:
         "before giving up.",
     )
     parser.add_argument(
+        "--ego_speed_default",
+        type=float,
+        default=11.11,
+        help="Speed (m/s) Autoware plans up to when a scenario declares none. "
+        "A scenario that samples its own ego speed (e.g. EGO_SPEED) overrides this "
+        "per run. Autoware's stock default is 4.17 m/s, slower than the NPCs in "
+        "these suites.",
+    )
+    parser.add_argument(
+        "--autoware_map_path",
+        default=None,
+        help="Autoware map directory inside WSL (e.g. $HOME/autoware/autoware_map/Town05). "
+        "With --engine autoware this lets the runner relaunch Autoware when CARLA "
+        "crashes; a CARLA crash strands Autoware, so recovery has to restart both. "
+        "Without it, a crash is fatal and both must be restarted by hand.",
+    )
+    parser.add_argument(
+        "--wsl_distro",
+        default="Ubuntu-22.04",
+        help="WSL distribution Autoware runs in",
+    )
+    parser.add_argument(
         "--skip_enrichment",
         action="store_true",
         help="Only execute the scenarios, without running the SOTIF enrichment pipeline afterwards",
@@ -115,6 +137,9 @@ def main() -> None:
         carla_exe=args.carla_exe,
         carla_launch_args=args.carla_launch_args,
         carla_boot_timeout_s=args.carla_boot_timeout,
+        ego_speed_default=args.ego_speed_default,
+        autoware_map_path=args.autoware_map_path,
+        wsl_distro=args.wsl_distro,
     )
     try:
         runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)

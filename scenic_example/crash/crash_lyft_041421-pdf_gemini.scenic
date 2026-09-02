@@ -92,7 +92,5 @@ require distance to intersection < distance from toyota to intersection
 require AV_INIT_DIST_TO_INTERSECTION[0] <= (distance to intersection) <= AV_INIT_DIST_TO_INTERSECTION[1]
 require TERM_DIST - 5 < distance from ego to toyota < TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in avTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

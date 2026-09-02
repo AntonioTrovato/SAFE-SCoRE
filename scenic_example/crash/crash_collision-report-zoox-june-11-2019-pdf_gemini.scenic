@@ -85,15 +85,12 @@ rightManeuverLane = egoRightManeuver.endLane
 # Find a left turn maneuver from bicycleInitLane.
 # The endLane of this maneuver should lead the bicyclist into the intersection's connecting lane.
 
-
-
 # Trajectory for bicyclist continuing "wrong way" southbound on Grant Ave.
 # This means following ego's approach lanes in reverse order.
 # The cyclist is currently on bicycleManeuver.connectingLane (which is egoManeuver.connectingLane).
 # To go "southbound (against the one-way) on Grant Ave", it needs to travel
 # backward along egoInitLane and potentially its predecessors.
 # We reverse the sequence of lanes that ego would have used to approach the intersection.
-
 
 #################################
 # SCENARIO SPECIFICATION        #
@@ -119,7 +116,5 @@ require EGO_INIT_DIST[0] <= (distance to intersection) <= EGO_INIT_DIST[1]
 require BICYCLE_INIT_DIST[0] <= (distance from bicycle to intersection) <= BICYCLE_INIT_DIST[1]
 # terminate when (distance to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

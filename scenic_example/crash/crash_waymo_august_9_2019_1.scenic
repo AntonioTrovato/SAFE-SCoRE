@@ -91,9 +91,6 @@ require (distance from adversary to intersection) < INIT_DIST
 # Secondary termination condition to prevent infinite simulations.
 # terminate when (distance to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
-
 #################################
 # RECORDING                     #
 #################################

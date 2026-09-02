@@ -31,7 +31,6 @@ param PASSENGER_INIT_DIST = VerifaiRange(-30, -40) # Starts behind ego
 param PASSENGER_INIT_SPEED = VerifaiRange(2, 3) # Starts moving slowly
 param PASSENGER_ACCEL_SPEED = VerifaiRange(7.0, 9.0) # Accelerates to approximately 8 MPH
 
-
 # Pedestrian
 param PEDESTRIAN_SPEED = VerifaiRange(2, 2.5) # Walking speed
 param PEDESTRIAN_CLEAR_DIST = VerifaiRange(7, 9) # Distance from ego for pedestrian to be considered clear
@@ -73,8 +72,6 @@ behavior PassengerBehavior(trajectory):
 
 behavior PedestrianBehavior():
     take SetWalkingSpeedAction(globalParameters.PEDESTRIAN_SPEED)
-
-
 
 #################################
 # SPATIAL RELATIONS             #
@@ -143,7 +140,5 @@ require EGO_INTERSECTION_DIST[0] <= (distance from ego to intersection) <= EGO_I
 require PED_INTERSECTION_DIST[0] <= (distance from pedestrian to intersection) <= PED_INTERSECTION_DIST[1]
 require ADV_INTERSECTION_DIST[0] <= (distance from adversaryLeft to intersection) <= ADV_INTERSECTION_DIST[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

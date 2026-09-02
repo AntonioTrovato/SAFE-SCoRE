@@ -47,7 +47,6 @@ behavior DonutBehavior():
     while True:
         take SetThrottleAction(1.0), SetSteerAction(-1.0)
 
-
 behavior InfinitiBehavior(trajectory):
     try:
         do FollowTrajectoryBehavior(target_speed=globalParameters.ADV_SPEED_PASSING, trajectory=trajectory)
@@ -85,7 +84,6 @@ else:
         with blueprint CRUISE_AV_MODEL,
         with behavior EgoBehavior(egoTrajectory)
 
-
 advInitLane = ego.laneSection.slowerLane.lane
 advManeuver = Uniform(*filter(lambda m: m.type is ManeuverType.STRAIGHT, advInitLane.maneuvers))
 advTrajectory = [advInitLane, advManeuver.connectingLane]
@@ -102,7 +100,5 @@ require ADV_DIST_TO_INTERSECTION[0] <= (distance from adversary to intersection)
 #terminate when (distance to adversary) < (ego.length + adversary.length) / 2
 #terminate when (distance from ego to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

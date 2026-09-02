@@ -38,7 +38,6 @@ BLACK_SEDAN_INIT_DIST_TO_INTERSECTION = 20
 param SAFETY_DIST = VerifaiRange(3, 5)
 param CRASH_DIST = VerifaiRange(5, 6)
 
-
 #################################
 # AGENT BEHAVIORS               #
 #################################
@@ -55,7 +54,6 @@ behavior CruiseAVBehavior(trajectory):
         do FollowTrajectoryBehavior(target_speed=0, trajectory=trajectory)
     interrupt when withinDistanceToAnyObjs(self, globalParameters.SAFETY_DIST):
         take SetBrakeAction(globalParameters.CRUISE_AV_BRAKE)
-
 
 behavior InfinitiQ60Behavior(trajectory):
     do FollowTrajectoryBehavior(target_speed=globalParameters.INFINITI_SPEED, trajectory=trajectory) until withinDistanceToAnyObjs(self, globalParameters.CRASH_DIST)
@@ -106,7 +104,6 @@ infiniti = new Car at infinitiSpawnPt,
     with blueprint INFINITI_MODEL,
     with behavior InfinitiQ60Behavior(infinitiTrajectory)
 
-
 blackSedan = new Car at blackSedanSpawnPt,
     with blueprint BLACK_SEDAN_MODEL,
     with behavior BlackSedanBehavior(blackSedanTrajectory)
@@ -119,7 +116,5 @@ require CRUISE_AV_INIT_DIST_TO_INTERSECTION - 5 <= (distance from ego to interse
 require INFINITI_INIT_DIST_TO_INTERSECTION - 5 <= (distance from infiniti to intersection) <= INFINITI_INIT_DIST_TO_INTERSECTION
 require BLACK_SEDAN_INIT_DIST_TO_INTERSECTION - 5 <=(distance from blackSedan to intersection) <= BLACK_SEDAN_INIT_DIST_TO_INTERSECTION
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in cruiseAvTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

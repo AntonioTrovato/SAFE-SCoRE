@@ -80,7 +80,5 @@ adversary = new Car at advSpawnPt,
 #terminate when (distance to adversary) < (ego.length + adversary.length) / 2
 require adversary.lane == ego.lane
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

@@ -67,7 +67,6 @@ egoSpawnPt = new OrientedPoint in egoInitLane.centerline
 # Choose an incoming lane perpendicular to ego's initial lane.
 # To position the cyclist to pass behind the southbound Zoox, a left turn from a westbound lane onto the southbound lane is suitable.
 
-
 #################################
 # SCENARIO SPECIFICATION        #
 #################################
@@ -98,7 +97,5 @@ require ADV_INIT_DIST[0] <= (distance from adversary to intersection) <= ADV_INI
 #terminate when (distance to adversary) < COLLISION_DIST
 # terminate when (distance to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

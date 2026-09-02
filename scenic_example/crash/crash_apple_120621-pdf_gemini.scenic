@@ -27,7 +27,6 @@ param ADV_SPEED_INIT = VerifaiRange(1, 3) # Lexus pulling out slowly
 param EGO_BRAKE_DIST = VerifaiRange(2, 4)
 param CRASH_DIST = VerifaiRange(8, 10)
 
-
 EGO_DIST_PAST_INTERSECTION = [5, 15] # Ego just crossed the intersection
 ADV_DIST_TO_INTERSECTION = [0, 5] # Adversary at or just entering the intersection
 
@@ -50,7 +49,6 @@ behavior AdvBehavior():
         wait
     do LaneChangeBehavior(laneSectionToSwitch=self.laneSection.fasterLane, target_speed=globalParameters.ADV_SPEED_INIT)
     do FollowLaneBehavior(target_speed=globalParameters.ADV_SPEED_INIT)
-
 
 #################################
 # SPATIAL RELATIONS             #
@@ -96,7 +94,5 @@ require 10 < distance to adv_spot < 15
 #require ADV_DIST_TO_INTERSECTION[0] <= (distance from adversary to intersection) <= ADV_DIST_TO_INTERSECTION[1]
 # terminate when (distance to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

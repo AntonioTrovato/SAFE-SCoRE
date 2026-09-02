@@ -103,7 +103,5 @@ require ego.lane is passenger.lane
 require ZOOX_DIST_TO_INTERSECTION[0] < (distance to intersection) < ZOOX_DIST_TO_INTERSECTION[1]
 require CROSS_DIST_TO_INTERSECTION[0] < (distance from cross_traffic to intersection) < CROSS_DIST_TO_INTERSECTION[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in zooxTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

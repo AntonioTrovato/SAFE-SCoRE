@@ -98,9 +98,6 @@ require next ego.lane is not bicycle.lane
 #terminate when (distance to adversary) < (ego.length + adversary.length) / 2
 # terminate when (distance to egoSpawnPt) > TERM_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
-
 #################################
 # RECORDING                     #
 #################################

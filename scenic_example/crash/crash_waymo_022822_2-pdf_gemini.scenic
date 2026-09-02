@@ -112,7 +112,5 @@ require INIT_DIST_TO_INTERSECTION[0]< (distance to intersection) < INIT_DIST_TO_
 require (distance from pedestrian to intersection) < PED_DIST_TO_INTERSECTION
 require ego.lane is adversary.lane
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in waymoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

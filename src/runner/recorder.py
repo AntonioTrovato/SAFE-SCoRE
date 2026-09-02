@@ -25,6 +25,15 @@ from data_gathering.carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
 from data_gathering.violationMonitor import ViolationMonitor
 
 
+class GoalReached(RuntimeError):
+    """Raised from on_monitor_step() when Autoware reports it has arrived.
+
+    An extra end condition for --engine autoware only; it stops the run early
+    but is otherwise treated exactly like a normal completion, so it changes
+    nothing in the metrics.
+    """
+
+
 class RunWallClockTimeout(RuntimeError):
     """Raised from on_monitor_step() when a run's real (wall-clock) time
     exceeds RunnerContext.wall_timeout_s.
@@ -57,6 +66,11 @@ class RunnerContext:
     lane_sensor: Optional[carla.Actor] = None
     ego_actor_id: Optional[int] = None
     world_state: Dict[str, Any] = field(default_factory=dict)
+
+    # --engine autoware only; None for behavior_agent, which leaves every
+    # Autoware-specific branch below dead.
+    autoware_session: Optional[Any] = None
+    _steps: int = 0
 
     def destroy_sensors(self) -> None:
         for sensor in (self.collision_sensor, self.lane_sensor):
@@ -167,6 +181,25 @@ def on_monitor_step(ctx: RunnerContext, ego: Any) -> None:
     ego_actor = ego.carlaActor
     if ctx.logger is None:
         _first_time_setup(ctx, ego_actor)
+
+    ctx._steps += 1
+
+    if ctx.autoware_session is not None:
+        # Engage on the first step, not before the loop: Autoware only offers
+        # autonomous mode once planning has produced a trajectory, and that
+        # needs the world to be ticking - which only starts here. The call
+        # runs on its own thread so the tick loop is not blocked.
+        if ctx._steps == 1 and not getattr(ctx.autoware_session, "engaged", False):
+            # Fallback only: prepare() normally engages up front, while the
+            # tick pump is running. This covers the case where it did not.
+            ctx.autoware_session.engage_background()
+        # Arrival is polled sparsely: each check is a ~1 s round trip into WSL,
+        # so once every 400 steps (20 simulated seconds at 0.05 s) rather than
+        # per tick.
+        elif ctx._steps % 400 == 0 and ctx.autoware_session.goal_reached():
+            raise GoalReached(
+                f"[{ctx.scenario_id}] run {ctx.run_index}: Autoware reached its goal"
+            )
 
     snapshot = ctx.world.get_snapshot()
     ctx.logger.update_frame(world=ctx.world, ego_vehicle=ego_actor, snapshot=snapshot)

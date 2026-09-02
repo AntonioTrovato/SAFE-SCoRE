@@ -102,7 +102,5 @@ turnAngle = startDir.angleWith(endDir)
 require abs(turnAngle) < math.radians(20)
 require EGO_INIT_DIST[0] <= (distance to intersection) <= EGO_INIT_DIST[1]
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

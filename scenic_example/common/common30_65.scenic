@@ -123,13 +123,9 @@ car3 = new Car at car3SpawnPt,
       with blueprint MODEL,
       with behavior Car3Behavior(car3Trajectory)
 
-
 #################################
 # RECORDING                     #
 #################################
-
-from rulebook_benchmark import bench
-require monitor bench.bench()
 
 record True as egoReachedGoal
 record ego._boundingPolygon as egoPoly

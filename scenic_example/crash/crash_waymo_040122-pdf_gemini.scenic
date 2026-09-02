@@ -96,7 +96,5 @@ require (distance from ego to intersection) < (distance from adversary to inters
 require INITIAL_DIST_FROM_INTERSECTION < (distance from ego to intersection) 
 require (distance from ego to adversary) < DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in waymoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

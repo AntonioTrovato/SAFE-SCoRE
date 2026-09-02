@@ -125,7 +125,5 @@ require rearAdv.lane is ego.lane
 require distance from ego to intersection < EGO_INIT_POS_DIST_FROM_INTERSECTION
 require distance from frontAdv to intersection < FRONT_ADV_INIT_POS_DIST_FROM_INTERSECTION
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds

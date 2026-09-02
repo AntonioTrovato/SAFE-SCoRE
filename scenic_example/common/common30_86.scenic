@@ -162,13 +162,9 @@ car3 = new LaneChangeCar at car3SpawnPt,
       with blueprint MODEL,
       with behavior Car3Behavior()
 
-
 #################################
 # RECORDING                     #
 #################################
-
-from rulebook_benchmark import bench
-require monitor bench.bench()
 
 record ego in egoManeuver.endLane as egoReachedGoal
 record ego._boundingPolygon as egoPoly

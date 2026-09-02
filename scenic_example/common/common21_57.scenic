@@ -140,13 +140,9 @@ car2 = new LaneChangeCar at car2SpawnPt,
 ped1 = new Pedestrian at ped1SpawnPt, facing toward ped1EndPt,
       with behavior Ped1Behavior()
 
-
 #################################
 # RECORDING                     #
 #################################
-
-from rulebook_benchmark import bench
-require monitor bench.bench()
 
 record ego in egoManeuver.endLane as egoReachedGoal
 record ego._boundingPolygon as egoPoly

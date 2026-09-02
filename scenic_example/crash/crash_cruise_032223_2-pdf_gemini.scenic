@@ -25,13 +25,11 @@ param CRUISE_AV_SPEED = VerifaiRange(5, 8) # Cruise AV speed in m/s
 param TRUCK_OFFSET_LATERAL = VerifaiRange(1.0, 2.0) # Lateral offset for "double-parked" from lane centerline
 param DOLLY_ATTACH_DIST = VerifaiRange(1.0, 3.0) # Distance from the back of the truck to the front of the dolly
 
-
 EGO_INTERSECTION_DISTANCE = 15
 TRUCK_INTERSECTION_DISTANCE = 20
 param SAFETY_DIST = VerifaiRange(3, 5)
 param EGO_BRAKE = VerifaiRange(0.5, 1.0)
 param TRUCK_OFFSET_X = VerifaiRange(1, 1.5)
-
 
 #################################
 # AGENT BEHAVIORS               #
@@ -59,8 +57,6 @@ egoSpawnPt = new OrientedPoint in egoEntryLane
 # Truck's lane: after the intersection, specifically in the lane the ego exits into
 truckLane = egoManeuver.endLane
 truckSpawnPt = new OrientedPoint in truckLane.centerline
-
-
 
 #################################
 # SCENARIO SPECIFICATION        #
@@ -102,7 +98,5 @@ require (distance from truck to intersection) < TRUCK_INTERSECTION_DISTANCE
 # Terminate if ego travels too far without incident (to prevent infinite simulation)
 #terminate when (distance from ego to egoSpawnPt) > TERM_TRAVELED_DIST
 
-from rulebook_benchmark import bench
-require monitor bench.bench()
 record ego in egoTrajectory[-1] as egoReachedGoal
 terminate after 20 seconds
