@@ -444,9 +444,13 @@ wrong and nothing else can work.
 | A scenario is skipped with a map message | Autoware is bound to a different map |
 | CARLA "Fatal error!" every few minutes | Known instability on Town05 with sensors attached - let the tool restart it |
 
-**`docs/LESSONS_LEARNED.md` explains all of these in depth**, including the
-diagnostics that give false answers. Read it before changing how the environment
-is managed.
+Two companion documents cover this properly:
+
+- **`docs/KNOWN_INSTABILITIES.md`** - every observed CARLA and Autoware failure
+  mode, with the logs and measurements that demonstrate each one, plus the
+  problems that remain unexplained.
+- **`docs/LESSONS_LEARNED.md`** - how to diagnose them, including the checks
+  that give false answers.
 
 ### Known limitations
 

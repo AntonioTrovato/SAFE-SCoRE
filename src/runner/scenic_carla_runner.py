@@ -345,6 +345,7 @@ def _run_once_worker(
     client_timeout_s: float,
     max_wall_seconds: float,
     ego_speed_default: float = 11.11,
+    attempt: int = 1,
 ) -> None:
     """Runs one scenario execution to completion. Module-level (not a
     method) and only plain/picklable arguments, so it can be launched as a
@@ -394,12 +395,15 @@ def _run_once_worker(
                     scene_ego_transform,
                 )
 
-                # Seeded per (scenario, run) so a rerun of the same run index
-                # takes the same branches at junctions and gets the same goal.
+                # Seeded per (scenario, run, attempt). The attempt matters:
+                # scenarios that do not sample the ego pose (e.g. an ego at a
+                # fixed OrientedPoint) produce an identical scene every time,
+                # so without it a retry would reuse the same goal too and
+                # reproduce the same failure exactly.
                 session = AutowareSession(
                     time_limit_s=timeout_s,
                     step_period_s=timestep,
-                    rng=random.Random(f"{scenario_id}:{run_index}"),
+                    rng=random.Random(f"{scenario_id}:{run_index}:{attempt}"),
                 )
                 # The patches must be live before CarlaSimulator is built, or
                 # its constructor reloads the map and destroys Autoware's ego.
@@ -1033,6 +1037,7 @@ class ScenicCarlaRunner:
                         xodr_path=xodr_path,
                         timeout_s=timeout_s,
                         max_steps=max_steps,
+                        attempt=attempt,
                     )
 
                     # Success is simply "a log was written". A run where the ego
@@ -1071,6 +1076,7 @@ class ScenicCarlaRunner:
         xodr_path: Optional[Path],
         timeout_s: float,
         max_steps: int,
+        attempt: int = 1,
     ) -> None:
         # Runs the actual scenario in its own OS process, so a hard
         # wall-clock timeout can always regain control by killing the
@@ -1099,6 +1105,7 @@ class ScenicCarlaRunner:
                 client_timeout_s=self.client_timeout_s,
                 max_wall_seconds=self.max_wall_seconds,
                 ego_speed_default=self.ego_speed_default,
+                attempt=attempt,
             ),
         )
         proc.start()
