@@ -100,14 +100,23 @@ class SpectatorFollower:
                         world = client.get_world()
                         ego = None
                     if ego is None or not ego.is_alive:
+                        vehicles = list(world.get_actors().filter("vehicle.*"))
+                        # --engine autoware: Autoware's ego carries role_name
+                        # 'ego_vehicle'.
                         ego = next(
                             (
                                 a
-                                for a in world.get_actors().filter("vehicle.*")
+                                for a in vehicles
                                 if a.attributes.get("role_name") == EGO_ROLE_NAME
                             ),
                             None,
                         )
+                        # --engine behavior_agent: Scenic spawns the ego itself
+                        # and sets no such role, so fall back to the
+                        # lowest-id vehicle - Scenic creates the ego first, so
+                        # it always holds the lowest actor id in the scene.
+                        if ego is None and vehicles:
+                            ego = min(vehicles, key=lambda a: a.id)
                         if ego is None:
                             # No ego yet (Autoware still starting, or a restart
                             # in progress). Re-resolve the world too, in case it

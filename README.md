@@ -273,6 +273,56 @@ Useful flags:
 Here Autoware drives the ego and Scenic drives everything else. Same scenarios,
 same outputs, but a real AD stack is now the thing under test.
 
+### From a cold PC: the whole sequence
+
+Assumes the one-time setup below is already done.
+
+**1.** Open a WSL terminal (`wsl` from PowerShell) and apply the kernel
+settings - these are lost on every reboot:
+
+```bash
+cd ~/autoware
+sudo ip link set lo multicast on
+sudo sysctl -w net.core.rmem_max=2147483647
+sudo sysctl -w net.ipv4.ipfrag_time=3
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+```
+
+**2.** Check the Windows host IP matches the one in the bridge's launch file -
+it can change after a reboot or a `wsl --shutdown`:
+
+```bash
+ip route show default | awk '{print $3}'
+```
+
+If it differs, update it and rebuild that one package:
+
+```bash
+sed -i 's|<arg name="host" default="[^"]*"/>|<arg name="host" default="NEW_IP"/>|'   src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
+colcon build --packages-select autoware_carla_interface
+```
+
+**3.** Leave CARLA and Autoware **closed** - the pipeline starts both itself,
+and will stop any it finds when it first restarts.
+
+**4.** Run it, from the repository root:
+
+```bash
+python -m src.runner.run_experiment   --input_dir scenic_example/aw_all   --output_folder aw_all   --num_runs 2   --engine autoware   --max_wall_seconds 200   --follow_camera behind   --carla_exe "C:\path	o\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe"   --carla_launch_args="-prefernvidia -quality-level=Low"   --autoware_map_path '$HOME/autoware/autoware_map/Town05'
+```
+
+That is the whole thing. Results land in `outputs/aw_all/`.
+
+**If anything looks wrong**, this must come back empty:
+
+```bash
+ros2 node list | sort | uniq -d
+```
+
+Anything listed is stale ROS registrations from an earlier session, which
+silently block autonomous mode. Cure: `wsl --shutdown`, then start again from
+step 1.
+
 ### One-time setup
 
 **1. Build the Autoware maps for your town.** Autoware needs a lanelet2 map and

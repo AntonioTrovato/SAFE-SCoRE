@@ -118,6 +118,39 @@ def _tuned_opendrive_generation(params: dict):
         carla.Client.generate_opendrive_world = original
 
 
+
+@contextlib.contextmanager
+def _realtime_pacing(step_period_s: float):
+    """Hold each simulated step to `step_period_s` of wall time.
+
+    behavior_agent mode otherwise ticks as fast as the hardware allows -
+    measured at roughly 4x real time - which is correct but unwatchable. The
+    metrics are unaffected either way (they are computed from simulated time
+    and delta_time), so this is applied only when someone is actually looking,
+    i.e. together with --follow_camera.
+
+    --engine autoware paces unconditionally through autoware_ownership, because
+    Autoware's control loop costs real wall-clock time and cannot be outrun.
+    """
+    from scenic.simulators.carla.simulator import CarlaSimulation
+
+    original = CarlaSimulation.step
+
+    def _paced(self):
+        started = time.time()
+        result = original(self)
+        remaining = step_period_s - (time.time() - started)
+        if remaining > 0:
+            time.sleep(remaining)
+        return result
+
+    CarlaSimulation.step = _paced
+    try:
+        yield
+    finally:
+        CarlaSimulation.step = original
+
+
 @contextlib.contextmanager
 def _spawn_diagnostics(scenario_id: str, run_index: int):
     """Temporarily wraps World.try_spawn_actor to log each spawn attempt's
@@ -346,6 +379,7 @@ def _run_once_worker(
     max_wall_seconds: float,
     ego_speed_default: float = 11.11,
     attempt: int = 1,
+    realtime: bool = False,
 ) -> None:
     """Runs one scenario execution to completion. Module-level (not a
     method) and only plain/picklable arguments, so it can be launched as a
@@ -387,6 +421,8 @@ def _run_once_worker(
         )
 
         with contextlib.ExitStack() as stack:
+            if realtime and engine != "autoware":
+                stack.enter_context(_realtime_pacing(timestep))
             if engine == "autoware":
                 from runner.autoware_session import (
                     AutowareSession,
@@ -1120,6 +1156,7 @@ class ScenicCarlaRunner:
                 max_wall_seconds=self.max_wall_seconds,
                 ego_speed_default=self.ego_speed_default,
                 attempt=attempt,
+                realtime=bool(self._follower),
             ),
         )
         proc.start()

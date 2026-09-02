@@ -32,7 +32,17 @@ python -m src.runner.run_experiment --input_dir scenic_example/common --output_f
 
 Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_runs` times each (SOTIF calls for repeated stochastic execution), then runs the SOTIF enrichment pipeline (below) automatically unless `--skip_enrichment` is passed. Two engines, selected via `--engine`:
 - `behavior_agent` (default): connects to a local CARLA server; the ego is driven by whatever `behavior` the `.scenic` file itself compiles in (e.g. `EgoBehavior()`) — Scenic's own driving behaviors are the "agent" here, no separate CARLA `BehaviorAgent` is involved.
-- `autoware`: only changes which CARLA server address/port (`--address`/`--port`) the runner connects to, on the assumption Autoware is already bridged to that server. This is a deliberate simplification — the actual Autoware bridge contract (who spawns/controls the ego) is out of scope for now.
+- `autoware`: hands the ego to a running Autoware Universe stack. Ownership is
+  split - Autoware owns the map, the ego, its sensors and its control; Scenic
+  owns the clock and every other actor; the runner sets the start pose and goal
+  and logs. Implemented in `src/runner/autoware_session.py` (runtime patches over
+  Scenic), `autoware_control.py` (ROS 2 calls via WSL) and `goal_planner.py`
+  (goal from a lane-graph walk). Requires Autoware patched with
+  `CARLA_EXTERNAL_TICK=1` so only one client ticks. With `--carla_exe` and
+  `--autoware_map_path` the runner starts, health-checks and restarts both
+  processes itself, retrying a failed run up to `--max_run_attempts` times.
+  `--follow_camera` chases the ego with CARLA's spectator (both engines).
+  See README.md and docs/KNOWN_INSTABILITIES.md.
 
 Key mechanism (`src/runner/scenic_carla_runner.py` + `src/runner/recorder.py`): Scenic's `simulator.simulate()` owns the tick loop internally, so there's no external per-tick hook to call into `CarlaBasicLogger`. Instead, the runner builds a temp copy of each `.scenic` file (map path rewritten to an absolute path) with a small Scenic `monitor` appended, which calls `runner.recorder.on_monitor_step()` once per simulated step; that function lazily builds a `CarlaBasicLogger` + `ViolationMonitor` + collision/lane-invasion sensors on its first call (exactly what `docs/integration.md` describes for any generator) and calls `update_frame()` every step. **`src/data_gathering/carlaBasicLogger.py` and `violationMonitor.py` are reused completely unmodified** by this path.
 
