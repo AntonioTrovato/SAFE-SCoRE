@@ -213,3 +213,250 @@ python -m src.pipeline.run_pipeline
 ```
 
 This processes every dataset folder already present under `outputs/`.
+
+---
+
+# How to run SAFE-SCoRE
+
+SAFE-SCoRE takes a folder of Scenic scenarios, runs each one *n* times, records
+what happened, and computes SOTIF metrics over the results. There are two modes,
+and they differ in **one thing only: who drives the ego car.**
+
+| Mode | Who drives the ego | Needs |
+|---|---|---|
+| `behavior_agent` *(default)* | The `behavior` written in the `.scenic` file | CARLA |
+| `autoware` | A real Autoware Universe stack | CARLA + Autoware + matching maps |
+
+Everything else is identical - the same scenarios, the same log format, the same
+metrics - which is what makes results from the two modes comparable.
+
+---
+
+## Mode 1: CARLA only (`behavior_agent`)
+
+The simplest case. Start a CARLA server, then:
+
+```bash
+python -m src.runner.run_experiment \
+  --input_dir scenic_example/common \
+  --output_folder my_results \
+  --num_runs 10
+```
+
+That runs every `.scenic` file under `--input_dir` ten times, writes one log per
+run to `outputs/my_results/`, and then computes all the SOTIF metrics.
+
+Let the tool manage CARLA for you, including restarting it if it crashes:
+
+```bash
+python -m src.runner.run_experiment \
+  --input_dir scenic_example/common \
+  --output_folder my_results \
+  --num_runs 10 \
+  --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" \
+  --carla_launch_args="-prefernvidia -quality-level=Low -RenderOffScreen"
+```
+
+Useful flags:
+
+- `--num_runs` - executions per scenario (10 by default; SOTIF asks for repeated
+  stochastic execution)
+- `--max_wall_seconds` - real-time cap per run, so a gridlocked scenario cannot
+  hang the suite
+- `--skip_enrichment` - only run the scenarios, skip the metrics (useful when
+  inspecting raw logs)
+
+---
+
+## Mode 2: CARLA + Autoware (`autoware`)
+
+Here Autoware drives the ego and Scenic drives everything else. Same scenarios,
+same outputs, but a real AD stack is now the thing under test.
+
+### One-time setup
+
+**1. Build the Autoware maps for your town.** Autoware needs a lanelet2 map and
+a point-cloud map per town, and is bound to **one map per launch**.
+
+**2. Stop Autoware ticking the simulation.** In
+`.../autoware_carla_interface/src/autoware_carla_interface/carla_autoware.py`,
+add `import os` and make its tick conditional:
+
+```python
+# was: if self.running:
+if self.running and os.environ.get("CARLA_EXTERNAL_TICK") != "1":
+    CarlaDataProvider.get_world().tick()
+```
+
+CARLA advances only when a client tells it to; if both Autoware and Scenic do
+that, frames double-step and the recorded metrics are corrupted. One line, no
+rebuild, and Autoware behaves normally when the variable is absent.
+
+**3. Raise Autoware's speed ceiling.** In
+`autoware_launch/config/planning/scenario_planning/common/common.param.yaml`,
+`max_vel` ships at `4.17` m/s (15 km/h). That value **clamps** everything. Scenic
+scenarios run their NPCs at ~6 m/s, so at 4.17 the ego is permanently the
+slowest car on the road. Raise it to a ceiling (e.g. `11.11` = 40 km/h) - the
+tool still sets the actual speed per scenario, below that ceiling.
+
+**4. Trim the cameras if you use Town05.** Town05 crashes CARLA with five or
+more cameras. Comment out all but one or two in the bridge's
+`config/sensor_mapping.yaml` under `enabled_sensors`.
+
+**5. Install `verifai`** if your scenarios use `VerifaiRange`:
+`pip install verifai`.
+
+### Running it: the tool manages everything
+
+Give it the two process-management flags and it does the rest - starts CARLA,
+starts Autoware, checks they are healthy, runs the scenarios, and restarts both
+if either crashes:
+
+```bash
+python -m src.runner.run_experiment \
+  --input_dir scenic_example/aw_focus \
+  --output_folder aw_results \
+  --num_runs 10 \
+  --engine autoware \
+  --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" \
+  --carla_launch_args="-prefernvidia -quality-level=Low -RenderOffScreen" \
+  --autoware_map_path '$HOME/autoware/autoware_map/Town05'
+```
+
+**Start it with CARLA and Autoware not already running** - the tool needs to own
+both, and will stop any it finds when it first restarts.
+
+What it does on its own:
+
+1. Starts CARLA, waits for it, starts Autoware with `CARLA_EXTERNAL_TICK=1`, and
+   ticks the world so Autoware can finish its own startup.
+2. Runs a **pre-flight**: the simulation clock advances correctly, there are no
+   stale ROS nodes, exactly one Autoware bridge is running. Nothing runs until
+   this passes.
+3. Runs each scenario *n* times, writing one log per run.
+4. **On any crash** - CARLA or Autoware - stops **both**, restarts **both**,
+   re-verifies, and retries the same run. Up to 5 attempts (`--max_run_attempts`),
+   then it discards that scenario and moves on.
+5. Prints a summary of what completed and what was discarded.
+
+Both sides are always restarted together, whichever failed: a CARLA crash leaves
+Autoware stranded (it retries a dead connection forever without erroring), and
+restarting Autoware against a live CARLA makes it reload the map CARLA already
+has - a known engine crash.
+
+### Running it yourself
+
+To keep control, omit `--carla_exe` and `--autoware_map_path` and start both by
+hand. The tool then only connects and runs; it will not start, stop or restart
+anything. A crash ends the suite and you restart manually.
+
+Start CARLA, then in WSL:
+
+```bash
+cd ~/autoware
+sudo ip link set lo multicast on
+sudo sysctl -w net.core.rmem_max=2147483647
+sudo sysctl -w net.ipv4.ipfrag_time=3
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+source install/setup.bash
+
+CARLA_EXTERNAL_TICK=1 ros2 launch autoware_launch e2e_simulator.launch.xml \
+  map_path:=$HOME/autoware/autoware_map/Town05 vehicle_model:=sample_vehicle \
+  sensor_model:=carla_sensor_kit simulator_type:=carla
+```
+
+The `sudo` lines are lost on every WSL restart and must be repeated.
+
+**No ego will appear and RViz will look inert - that is correct.** With external
+ticking Autoware cannot finish starting until SAFE-SCoRE begins ticking.
+
+To stop Autoware, press `Ctrl+C` and **wait** for it to finish. Killing it
+abruptly leaves stale ROS registrations behind that eventually block autonomous
+mode; if that happens, `wsl --shutdown` clears them.
+
+---
+
+## What happens during an Autoware run
+
+1. Read the ego's target speed from the sampled scene (`EGO_SPEED` and similar),
+   set Autoware's speed limit to match, and size the goal against the same
+   number.
+2. Move the ego to the scene's starting position and initialise localization.
+3. Compute a destination and set it as the route.
+4. Engage autonomous mode.
+5. Run the scenario: Scenic spawns the NPCs and drives them, Autoware drives the
+   ego, every frame is logged.
+6. Reset, ready for the next run.
+
+**NPCs only appear at step 5.** If you see the ego move to a new position and
+take a route but no NPCs ever appear, the run failed at step 4.
+
+### Where the destination comes from
+
+A `.scenic` file has no destination, so one is derived per run: the ego follows
+its lane, and at each junction picks one of the possible branches at random; the
+goal is the furthest point it could plausibly reach within the scenario's time
+limit, given the speed it will actually drive at. Because the scenario is
+re-sampled every run, the start differs each time and the goal is recomputed
+each time.
+
+---
+
+## Understanding the output
+
+`outputs/<your_folder>/` contains one JSON log per run, plus the metric CSVs:
+
+| File | Contains |
+|---|---|
+| `<scenario>_run_NN_log_basic.json` | Frame-by-frame ego and NPC state, plus recorded events |
+| `SOTIF_Final.csv` | Per-scenario hazard rates, residual risk, average execution time |
+| `sotif_hazard_leaderboard.csv` | Per-hazard breakdown and acceptability |
+| `odd_scores.csv` | ODD scoring and triggering conditions |
+| `odd_tc_coverage_*.csv` | ODD/TC coverage and entropy |
+
+**All hazard metrics describe the ego only.** NPCs appear in each frame as
+context (they are what time-to-collision is measured against) but never generate
+violations of their own.
+
+---
+
+## When something goes wrong
+
+The single most useful check, for any symptom in Autoware mode:
+
+```python
+import carla
+w = carla.Client('127.0.0.1', 2000).get_world()
+a = w.get_snapshot().timestamp
+w.tick()
+b = w.get_snapshot().timestamp
+print('frame +', b.frame - a.frame, ' time +', round(b.elapsed_seconds - a.elapsed_seconds, 4))
+```
+
+It must print `frame + 1  time + 0.05`. If it does not, the simulation clock is
+wrong and nothing else can work.
+
+| Symptom | Likely cause |
+|---|---|
+| Ego frozen, "AUTO" greyed out, but localization and routing green | Stale ROS nodes, or a bad clock - see `docs/LESSONS_LEARNED.md` §1-2 |
+| Autoware starts but no ego appears | Expected with `CARLA_EXTERNAL_TICK=1`; it needs SAFE-SCoRE to start ticking |
+| Ego drives only a metre or two | Something else is ticking the world too |
+| A scenario is skipped with a map message | Autoware is bound to a different map |
+| CARLA "Fatal error!" every few minutes | Known instability on Town05 with sensors attached - let the tool restart it |
+
+**`docs/LESSONS_LEARNED.md` explains all of these in depth**, including the
+diagnostics that give false answers. Read it before changing how the environment
+is managed.
+
+### Known limitations
+
+- Town05 supports at most 4 cameras in CARLA 0.9.15. With cameras reduced,
+  traffic-light recognition degrades, so `red_light` counts in Autoware mode
+  need checking before you trust them.
+- CARLA on Town05 with Autoware attached is unstable (~9 minute median uptime),
+  and Autoware itself degrades after roughly 3-4 runs. Both are handled by the
+  automatic restart, at the cost of ~2 minutes per recovery.
+- An Autoware run cannot be faster than real time: budget ~30-45 s of wall time
+  per 20 s scenario.
+- Autoware-mode runs carry a computed goal that `behavior_agent` runs do not.
+  Worth stating when comparing the two.

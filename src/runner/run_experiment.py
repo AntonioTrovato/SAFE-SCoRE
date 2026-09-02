@@ -92,6 +92,20 @@ def main() -> None:
         "before giving up.",
     )
     parser.add_argument(
+        "--max_run_attempts",
+        type=int,
+        default=5,
+        help="How many times a single run is retried - restarting CARLA and "
+        "Autoware between attempts - before the whole scenario is discarded.",
+    )
+    parser.add_argument(
+        "--no_wsl_shutdown",
+        action="store_true",
+        help="Do not restart the WSL VM even when stale DDS registrations are "
+        "blocking autonomous mode. Restarting it is the only reliable cure, but "
+        "it closes every WSL terminal, so this opts out and fails loudly instead.",
+    )
+    parser.add_argument(
         "--ego_speed_default",
         type=float,
         default=11.11,
@@ -140,9 +154,13 @@ def main() -> None:
         ego_speed_default=args.ego_speed_default,
         autoware_map_path=args.autoware_map_path,
         wsl_distro=args.wsl_distro,
+        max_run_attempts=args.max_run_attempts,
+        allow_wsl_shutdown=not args.no_wsl_shutdown,
     )
     try:
         runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
+
+        runner.summarize()
 
         if not args.skip_enrichment:
             pipeline = SOTIFPipeline(REPO_ROOT)

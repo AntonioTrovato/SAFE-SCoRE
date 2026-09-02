@@ -470,11 +470,31 @@ def _run_once_worker(
         ctx.destroy_sensors()
         if session is not None:
             session.finish()
+            # Scenic's CarlaSimulator.destroy() drops the world out of
+            # synchronous mode. autoware_ownership patches that out, but
+            # sim.destroy() below runs in this finally block - outside the
+            # patch's scope - so the original runs and leaves the world
+            # free-running. Autoware then has no coherent clock, publishes no
+            # trajectory, and every later run fails to engage while looking
+            # perfectly healthy. Restore the settings explicitly afterwards.
+            _restore_sync = (ctx.world, timestep)
+        else:
+            _restore_sync = None
         if sim is not None:
             try:
                 sim.destroy()
             except Exception:
                 pass
+        if _restore_sync is not None and _restore_sync[0] is not None:
+            world, step = _restore_sync
+            try:
+                s = world.get_settings()
+                s.synchronous_mode = True
+                s.fixed_delta_seconds = step
+                world.apply_settings(s)
+                log.info("[autoware] synchronous mode restored for the next run")
+            except Exception:
+                log.warning("[autoware] could not restore synchronous mode", exc_info=True)
 
 
 class ScenicCarlaRunner:
@@ -495,6 +515,8 @@ class ScenicCarlaRunner:
         carla_boot_timeout_s: float = 90.0,
         autoware_map_path: Optional[str] = None,
         wsl_distro: str = "Ubuntu-22.04",
+        max_run_attempts: int = 5,
+        allow_wsl_shutdown: bool = True,
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -538,6 +560,15 @@ class ScenicCarlaRunner:
         self.autoware_map_path = autoware_map_path
         self.wsl_distro = wsl_distro
         self._autoware_proc: Optional[subprocess.Popen] = None
+        # How many times one run index is retried (restarting the whole
+        # environment between attempts) before the scenario is abandoned.
+        self.max_run_attempts = max_run_attempts
+        # Stale DDS registrations survive a process restart, so the only
+        # cure is restarting the WSL VM - which closes every WSL terminal.
+        self.allow_wsl_shutdown = allow_wsl_shutdown
+        # Outcome bookkeeping, reported by summarize().
+        self.completed: list = []
+        self.discarded: list = []
 
     # ------------------------------------------------------------------
     def _carla_alive(self, timeout_s: float = 5.0) -> bool:
@@ -568,46 +599,162 @@ class ScenicCarlaRunner:
             "/control/trajectory_follower/controller_node_exe",
         )
 
+    # ------------------------------------------------------------------
+    def _clock_healthy(self, drain_ticks: int = 120) -> bool:
+        """Drain any queued frames, then require one tick == one timestep.
+
+        The single most valuable check in this mode: a world whose clock jumps
+        gives Autoware incoherent sensor timing, so it never publishes a usable
+        trajectory, so autonomous mode never becomes available and the ego
+        never moves. Everything else is downstream of this.
+
+        The drain matters. During Autoware's startup both the tick pump and the
+        bridge's own startup ticks queue work faster than the server retires
+        it, so the first tick afterwards flushes the whole backlog - one tick
+        was measured advancing 9501 frames and 35 seconds. That is a queue to
+        be emptied, not a broken clock, so tick until two consecutive ticks
+        each advance exactly one frame and one timestep.
+
+        Note: sampling get_snapshot().frame *without* ticking returns a cached
+        value, so a free-running world can look frozen. Only tick deltas count.
+        """
+        try:
+            probe = carla.Client(self.address, self.port)
+            probe.set_timeout(60.0)
+            world = probe.get_world()
+            settings = world.get_settings()
+            if not settings.synchronous_mode or not settings.fixed_delta_seconds:
+                log.warning(
+                    "clock check: world is not synchronous (sync=%s delta=%s)",
+                    settings.synchronous_mode, settings.fixed_delta_seconds,
+                )
+                return False
+
+            good = 0
+            worst = None
+            for _ in range(drain_ticks):
+                before = world.get_snapshot().timestamp
+                world.tick()
+                after = world.get_snapshot().timestamp
+                d_frame = after.frame - before.frame
+                d_time = after.elapsed_seconds - before.elapsed_seconds
+                if d_frame == 1 and abs(d_time - self.timestep) <= 0.002:
+                    good += 1
+                    if good >= 2:
+                        return True
+                else:
+                    good = 0
+                    worst = (d_frame, d_time)
+
+            log.warning(
+                "clock check: still unsettled after %d ticks (last bad tick: "
+                "frame +%s, time +%.4f; expected +1, +%.2f)",
+                drain_ticks, worst[0] if worst else "?",
+                worst[1] if worst else float("nan"), self.timestep,
+            )
+            return False
+        except RuntimeError as exc:
+            log.warning("clock check: could not reach CARLA (%s)", exc)
+            return False
+
+    def _duplicate_node_count(self) -> int:
+        """Stale DDS registrations left by hard-killed Autoware instances."""
+        res = subprocess.run(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             "source /opt/ros/humble/setup.bash >/dev/null 2>&1; "
+             "source $HOME/autoware/install/setup.bash >/dev/null 2>&1; "
+             "export RMW_IMPLEMENTATION=rmw_cyclonedds_cpp; "
+             "export CYCLONEDDS_URI=file://$HOME/cyclonedds.xml; "
+             "t=$(timeout 15 ros2 node list 2>/dev/null | wc -l); "
+             "u=$(timeout 15 ros2 node list 2>/dev/null | sort -u | wc -l); echo $((t-u))"],
+            capture_output=True, text=True,
+        ).stdout.strip().split()
+        try:
+            return int(res[-1]) if res else -1
+        except ValueError:
+            return -1
+
+    def environment_healthy(self, verbose: bool = True) -> bool:
+        """The pre-flight: everything that must hold before a run can succeed."""
+        if not self._carla_alive():
+            if verbose:
+                log.warning("pre-flight: CARLA is not reachable")
+            return False
+        if self.engine != "autoware":
+            return True
+        if not self._autoware_alive():
+            if verbose:
+                log.warning("pre-flight: Autoware nodes are missing")
+            return False
+        dupes = self._duplicate_node_count()
+        if dupes > 0:
+            if verbose:
+                log.warning("pre-flight: %d duplicate ROS nodes (stale DDS state)", dupes)
+            return False
+        if not self._clock_healthy():
+            if verbose:
+                log.warning("pre-flight: clock invariant failed (world is not truly synchronous)")
+            return False
+        if verbose:
+            log.info("pre-flight OK: CARLA up, Autoware up, no duplicates, clock sane")
+        return True
+
+    @staticmethod
+    def _carla_process_count() -> int:
+        out = subprocess.run(["tasklist"], capture_output=True, text=True, errors="ignore").stdout
+        return sum(1 for line in out.splitlines() if "CarlaUE4-Win64" in line)
+
+    def _kill_all_carla(self, timeout_s: float = 30.0) -> None:
+        """Kill every CARLA process and wait until none remain.
+
+        The waiting is the point. `CarlaUE4.exe` is only a launcher: it spawns
+        `CarlaUE4-Win64-Shipping.exe` and exits immediately, so the handle we
+        hold is already dead and tells us nothing about the real server.
+        Launching a replacement before the old one has gone leaves *two*
+        servers bound to port 2000 - Autoware then talks to one and the runner
+        to the other, and nothing works while everything looks alive.
+        """
+        for image in ("CarlaUE4-Win64-Shipping.exe", "CarlaUE4.exe", "CrashReportClient.exe"):
+            subprocess.run(["taskkill", "/IM", image, "/F"], capture_output=True)
+        self._carla_proc = None
+
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            if self._carla_process_count() == 0:
+                return
+            time.sleep(1.0)
+        log.warning("CARLA processes still present after %.0fs.", timeout_s)
+
     def _restart_carla_server(self) -> None:
         if self.carla_exe is None:
             raise RuntimeError(
-                "CARLA server at "
-                f"{self.address}:{self.port} is unreachable and no --carla_exe was "
-                "configured, so it cannot be restarted automatically. Start it "
-                "manually and rerun."
+                f"CARLA at {self.address}:{self.port} is unreachable and no --carla_exe "
+                "was configured, so it cannot be restarted automatically."
             )
 
-        log.warning("CARLA server unreachable; restarting it (%s)...", self.carla_exe)
-
-        if self._carla_proc is not None and self._carla_proc.poll() is None:
-            self._carla_proc.terminate()
-            try:
-                self._carla_proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                self._carla_proc.kill()
-        else:
-            # Either we never launched it ourselves (first crash of the run,
-            # started manually) or it already exited after crashing. Best-
-            # effort clean up any leftover process so it isn't still holding
-            # the port when we launch a fresh one.
-            for image in (
-                "CarlaUE4-Win64-Shipping.exe",
-                "CarlaUE4.exe",
-                "CrashReportClient.exe",  # the "Fatal error" dialog
-            ):
-                subprocess.run(["taskkill", "/IM", image, "/F"], capture_output=True)
+        log.warning("Restarting CARLA (%s)...", self.carla_exe)
+        self._kill_all_carla()
 
         self._carla_proc = subprocess.Popen([str(self.carla_exe), *self.carla_launch_args])
 
         deadline = time.time() + self.carla_boot_timeout_s
         while time.time() < deadline:
             if self._carla_alive():
-                log.info("CARLA server back up after restart.")
+                count = self._carla_process_count()
+                if count > 1:
+                    log.error("%d CARLA servers are running; killing and retrying.", count)
+                    self._kill_all_carla()
+                    self._carla_proc = subprocess.Popen(
+                        [str(self.carla_exe), *self.carla_launch_args]
+                    )
+                    deadline = time.time() + self.carla_boot_timeout_s
+                    continue
+                log.info("CARLA is up.")
                 return
             time.sleep(2.0)
+
         raise RuntimeError(
-            f"CARLA server did not come back up within {self.carla_boot_timeout_s:.0f}s "
-            "of restarting it."
+            f"CARLA did not come back up within {self.carla_boot_timeout_s:.0f}s."
         )
 
     def shutdown(self) -> None:
@@ -629,92 +776,160 @@ class ScenicCarlaRunner:
 
 
     # ------------------------------------------------------------------
-    def _kill_autoware(self) -> None:
-        """Stop Autoware, including any stranded instance we did not launch.
+    def _kill_autoware(self, graceful_wait_s: float = 20.0) -> None:
+        """Stop Autoware, preferring a clean shutdown over a kill.
 
-        A CARLA crash leaves Autoware alive but useless - its client retries a
-        dead connection forever without raising - so it must be killed before
-        CARLA comes back, or the new server inherits a confused stack.
+        SIGINT first, and give it time. This matters more than it looks:
+        hard-killed nodes stay advertised in CycloneDDS, the registrations
+        accumulate across restarts, and once Autoware's duplicated_node_checker
+        sees them it blocks autonomous mode permanently - while localization
+        and routing still look green. A recovery policy that restarts often
+        would poison its own environment within a few cycles.
         """
         if self._autoware_proc is not None and self._autoware_proc.poll() is None:
             self._autoware_proc.terminate()
             try:
-                self._autoware_proc.wait(timeout=15)
+                self._autoware_proc.wait(timeout=graceful_wait_s)
             except subprocess.TimeoutExpired:
                 self._autoware_proc.kill()
         self._autoware_proc = None
+
+        # SIGINT the launch itself, which propagates to every node.
         subprocess.run(
-            [
-                "wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-                "pkill -f 'ros2 launch autoware_launch' ; pkill -f component_container ; "
-                "pkill -f autoware_carla_interface ; pkill -f rviz2 ; sleep 3",
-            ],
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             "pkill -INT -f 'ros2 launch autoware_launch' 2>/dev/null; true"],
+            capture_output=True,
+        )
+        deadline = time.time() + graceful_wait_s
+        while time.time() < deadline:
+            left = subprocess.run(
+                ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+                 "pgrep -c -f component_container || echo 0"],
+                capture_output=True, text=True,
+            ).stdout.strip().split()
+            if left and left[-1] == "0":
+                log.info("Autoware shut down cleanly.")
+                return
+            time.sleep(2.0)
+
+        log.warning("Autoware did not exit cleanly; forcing it (may leave stale DDS state).")
+        subprocess.run(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             "pkill -f 'ros2 launch autoware_launch'; pkill -f component_container; "
+             "pkill -f autoware_carla_interface; pkill -f rviz2; sleep 3"],
             capture_output=True,
         )
 
-    def _start_autoware(self) -> None:
-        """Launch Autoware and wait until it can actually plan.
+    def _start_autoware(self, timeout_s: float = 300.0) -> bool:
+        """Launch Autoware and wait until its bridge has really finished.
 
-        CARLA_EXTERNAL_TICK=1 stops the bridge advancing the world, which also
-        means it cannot finish its own startup unaided - so the world is ticked
-        from here until the stack reports ready (see TickPump).
+        "Ready" is not when the routing API answers - that happens well before
+        the bridge has loaded the map into CARLA and spawned the ego, and a
+        clock check at that point fails because synchronous mode has not been
+        applied yet. Wait for the observable end state instead: the expected
+        map is loaded, an ego exists, and one tick advances exactly one frame.
+
+        Ticks are pumped throughout, because with CARLA_EXTERNAL_TICK=1 the
+        bridge cannot finish its own startup unaided.
         """
-        from runner.autoware_control import AutowareController
         from runner.autoware_session import TickPump
 
+        # Refuse to start a second stack; two bridges means two tick masters.
+        leftover = subprocess.run(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             "pgrep -c -f component_container || echo 0"],
+            capture_output=True, text=True,
+        ).stdout.strip().split()
+        if leftover and leftover[-1] not in ("0", ""):
+            self._kill_autoware()
+
+        expected_map = str(self.autoware_map_path).rstrip("/").split("/")[-1]
         cmd = (
             "cd ~/autoware && source install/setup.bash && "
             "CARLA_EXTERNAL_TICK=1 ros2 launch autoware_launch e2e_simulator.launch.xml "
             f"map_path:={self.autoware_map_path} vehicle_model:=sample_vehicle "
             "sensor_model:=carla_sensor_kit simulator_type:=carla"
         )
-        # Refuse to start a second stack. Two bridges means two tick masters -
-        # one of them without CARLA_EXTERNAL_TICK - which desyncs sensors,
-        # trips Autoware's duplicated_node_checker, and leaves the ego unable
-        # to engage while everything else looks healthy.
-        leftover = subprocess.run(
-            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-             "pgrep -c -f 'autoware_carla_interface --ros-args' || true"],
-            capture_output=True, text=True,
-        ).stdout.strip()
-        if leftover and leftover.split()[-1] not in ("0", ""):
-            log.warning("Found %s leftover Autoware bridge(s); killing before start.", leftover)
-            self._kill_autoware()
-
-        log.warning("Starting Autoware (map_path=%s)...", self.autoware_map_path)
+        log.warning("Starting Autoware (map=%s)...", expected_map)
         self._autoware_proc = subprocess.Popen(
             ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic", cmd],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 
         client = carla.Client(self.address, self.port)
         client.set_timeout(60.0)
-        # Pass the client: Autoware's bridge reloads the map during startup,
-        # which invalidates the world handle the pump was ticking.
-        with TickPump(client.get_world(), client=client):
-            if not AutowareController(distro=self.wsl_distro).wait_ready(timeout_s=240.0):
-                raise RuntimeError(
-                    "Autoware did not become ready after being restarted."
-                )
-        log.info("Autoware is back up.")
+        pump = TickPump(client.get_world(), rate_hz=20.0, client=client)
+        pump.start()
+        try:
+            deadline = time.time() + timeout_s
+            while time.time() < deadline:
+                try:
+                    world = client.get_world()
+                    on_map = world.get_map().name.split("/")[-1] == expected_map
+                    has_ego = any(
+                        a.attributes.get("role_name") == "ego_vehicle"
+                        for a in world.get_actors().filter("vehicle.*")
+                    )
+                    if on_map and has_ego:
+                        log.info("Autoware is up (map %s loaded, ego spawned).", expected_map)
+                        return True
+                except RuntimeError:
+                    pass
+                time.sleep(5.0)
+        finally:
+            pump.stop()
 
-    def _recover(self) -> None:
-        """Bring the whole environment back after a CARLA crash.
+        log.error("Autoware did not finish starting within %.0fs.", timeout_s)
+        return False
 
-        Order matters: Autoware first (it is stranded, and would otherwise
-        attach to a half-booted server), then CARLA, then Autoware again.
+    def _recover(self, attempts: int = 3) -> bool:
+        """Restart the whole environment until the pre-flight passes.
+
+        Always restarts *both*, whichever side failed. Two reasons: a CARLA
+        crash strands Autoware (its client retries a dead connection forever
+        without raising), and restarting Autoware against a live CARLA makes it
+        reload the map CARLA already has - the known UE4 access violation. A
+        fresh CARLA comes up on its default map, so Autoware's load is a
+        genuine change.
         """
-        if self.engine == "autoware":
-            if self.autoware_map_path is None:
-                raise RuntimeError(
-                    "CARLA died and --engine autoware needs Autoware restarted with it, "
-                    "but no --autoware_map_path was given. Restart both manually and rerun."
-                )
-            self._kill_autoware()
-        self._restart_carla_server()
-        if self.engine == "autoware":
-            self._start_autoware()
+        if self.engine == "autoware" and self.autoware_map_path is None:
+            raise RuntimeError(
+                "The environment needs restarting but no --autoware_map_path was "
+                "given, so Autoware cannot be relaunched. Restart both by hand."
+            )
+
+        for attempt in range(1, attempts + 1):
+            log.warning("Recovering the environment (attempt %d/%d)...", attempt, attempts)
+            if self.engine == "autoware":
+                self._kill_autoware()
+            self._restart_carla_server()
+            if self.engine == "autoware":
+                self._start_autoware()
+
+            if self.environment_healthy():
+                log.info("Environment recovered.")
+                return True
+
+            # Duplicates survive a process restart - they live in DDS, not in
+            # the processes - so the only cure is restarting the WSL VM.
+            if self.engine == "autoware" and self._duplicate_node_count() > 0:
+                if self.allow_wsl_shutdown:
+                    log.warning(
+                        "Stale DDS registrations persist; restarting the WSL VM "
+                        "(this closes every WSL terminal)."
+                    )
+                    self._kill_autoware()
+                    subprocess.run(["wsl.exe", "--shutdown"], capture_output=True)
+                    time.sleep(10)
+                else:
+                    raise RuntimeError(
+                        "Stale DDS registrations are blocking autonomous mode and "
+                        "--allow_wsl_shutdown was not given. Run 'wsl --shutdown' "
+                        "by hand and restart."
+                    )
+
+        log.error("Environment could not be recovered after %d attempts.", attempts)
+        return False
 
     # ------------------------------------------------------------------
     def _map_matches_autoware(self, carla_map: Optional[str], scenario_id: str) -> bool:
@@ -766,38 +981,86 @@ class ScenicCarlaRunner:
 
         carla_map, xodr_path = _carla_town_from_scenic(scenic_path)
 
-        if self.engine == "autoware" and not self._map_matches_autoware(carla_map, scenario_id):
-            return
+        if self.engine == "autoware":
+            # Bring the environment up (or back up) before anything else. The
+            # map check has to come after, because it is Autoware that loads
+            # the scenario's map into CARLA - checking first would compare
+            # against whatever map a freshly booted CARLA happens to have.
+            if not self.environment_healthy(verbose=False):
+                if not self._recover():
+                    self.discarded.append((scenario_id, 0, "environment unrecoverable"))
+                    return
+
+            if not self._map_matches_autoware(carla_map, scenario_id):
+                # A stock-town mismatch normally means Autoware is bound to a
+                # different map; recovering relaunches it against the map this
+                # runner is configured for.
+                if carla_map is not None and self.autoware_map_path is not None:
+                    log.warning("Restarting so Autoware loads '%s'.", carla_map)
+                    if not self._recover() or not self._map_matches_autoware(
+                        carla_map, scenario_id
+                    ):
+                        self.discarded.append((scenario_id, 0, "map mismatch"))
+                        return
+                else:
+                    self.discarded.append((scenario_id, 0, "map not runnable with Autoware"))
+                    return
 
         with tempfile.TemporaryDirectory(prefix="safe_score_scenic_") as tmp_dir_str:
             tmp_scenic_path = _prepare_temp_scenic(scenic_path, Path(tmp_dir_str))
 
             for run_index in range(1, num_runs + 1):
-                log.info("[%s] run %d/%d", scenario_id, run_index, num_runs)
-                if not self._carla_alive():
-                    self._recover()
-                elif self.engine == "autoware" and not self._autoware_alive():
-                    log.warning(
-                        "Autoware stopped answering (a node has probably died); "
-                        "restarting the environment before the next run."
+                produced = False
+                for attempt in range(1, self.max_run_attempts + 1):
+                    log.info(
+                        "[%s] run %d/%d (attempt %d/%d)",
+                        scenario_id, run_index, num_runs, attempt, self.max_run_attempts,
                     )
-                    # Deliberately the *paired* recovery, not an Autoware-only
-                    # restart. Autoware's startup calls load_world(<map>), and
-                    # reloading the map CARLA is already running is the known
-                    # UE4 access violation - so restarting Autoware against a
-                    # live CARLA reliably kills CARLA. Restarting CARLA first
-                    # means it comes up on its default map and Autoware's load
-                    # is a genuine change of map.
-                    self._recover()
-                self._run_once(
-                    tmp_scenic_path=tmp_scenic_path,
-                    scenario_id=scenario_id,
-                    run_index=run_index,
-                    carla_map=carla_map,
-                    xodr_path=xodr_path,
-                    timeout_s=timeout_s,
-                    max_steps=max_steps,
-                )
+                    if not self.environment_healthy(verbose=(attempt > 1)):
+                        if not self._recover():
+                            log.error(
+                                "[%s] giving up: the environment cannot be recovered.",
+                                scenario_id,
+                            )
+                            self.discarded.append((scenario_id, run_index, "environment unrecoverable"))
+                            return
+
+                    self._run_once(
+                        tmp_scenic_path=tmp_scenic_path,
+                        scenario_id=scenario_id,
+                        run_index=run_index,
+                        carla_map=carla_map,
+                        xodr_path=xodr_path,
+                        timeout_s=timeout_s,
+                        max_steps=max_steps,
+                    )
+
+                    # Success is simply "a log was written". A run where the ego
+                    # barely moved is a legitimate result, not a failure; only a
+                    # crash or a setup failure leaves no log behind.
+                    expected = self.output_dir / f"{scenario_id}_run_{run_index:02d}_log_basic.json"
+                    if expected.exists():
+                        produced = True
+                        break
+
+                    log.warning(
+                        "[%s] run %d produced no log (attempt %d/%d) - recovering.",
+                        scenario_id, run_index, attempt, self.max_run_attempts,
+                    )
+                    if attempt < self.max_run_attempts and not self._recover():
+                        break
+
+                if not produced:
+                    log.error(
+                        "[%s] run %d failed %d times; discarding the whole scenario.",
+                        scenario_id, run_index, self.max_run_attempts,
+                    )
+                    self.discarded.append(
+                        (scenario_id, run_index, f"failed {self.max_run_attempts} attempts")
+                    )
+                    return
+
+            self.completed.append((scenario_id, num_runs))
 
     def _run_once(
         self,
@@ -863,6 +1126,18 @@ class ScenicCarlaRunner:
             )
 
     # ------------------------------------------------------------------
+    def summarize(self) -> None:
+        """What actually completed, and what was abandoned and why."""
+        log.info("=" * 62)
+        log.info("SUITE SUMMARY")
+        for scenario_id, n in self.completed:
+            log.info("  COMPLETED  %-32s %d/%d runs", scenario_id, n, n)
+        for scenario_id, run_index, why in self.discarded:
+            log.info("  DISCARDED  %-32s at run %d (%s)", scenario_id, run_index, why)
+        if not self.completed and not self.discarded:
+            log.info("  (nothing ran)")
+        log.info("=" * 62)
+
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:
         input_dir = Path(input_dir)
         _ensure_scenic_twins(input_dir)
