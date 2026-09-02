@@ -521,6 +521,7 @@ class ScenicCarlaRunner:
         wsl_distro: str = "Ubuntu-22.04",
         max_run_attempts: int = 5,
         allow_wsl_shutdown: bool = True,
+        follow_camera: str = "",
     ):
         if engine not in ("behavior_agent", "autoware"):
             raise ValueError(f"Unknown engine: {engine}")
@@ -573,6 +574,16 @@ class ScenicCarlaRunner:
         # Outcome bookkeeping, reported by summarize().
         self.completed: list = []
         self.discarded: list = []
+        # Optional spectator camera that chases the ego so a run can be
+        # watched. Observer only - it never ticks - and only visible if
+        # CARLA was started WITHOUT -RenderOffScreen.
+        self._follower = None
+        if follow_camera:
+            from runner.follow_camera import SpectatorFollower
+            self._follower = SpectatorFollower(
+                address=self.address, port=self.port, mode=follow_camera
+            )
+            self._follower.start()
 
     # ------------------------------------------------------------------
     def _carla_alive(self, timeout_s: float = 5.0) -> bool:
@@ -762,6 +773,9 @@ class ScenicCarlaRunner:
         )
 
     def shutdown(self) -> None:
+        if self._follower is not None:
+            self._follower.stop()
+            self._follower = None
         """Stops the CARLA server this runner itself launched via
         --carla_exe, if any. A no-op if CARLA was already running when the
         pipeline started (nothing to clean up) or --carla_exe wasn't set."""

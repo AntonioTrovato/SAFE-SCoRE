@@ -323,6 +323,22 @@ python -m src.runner.run_experiment \
   --autoware_map_path '$HOME/autoware/autoware_map/Town05'
 ```
 
+### Watching a run
+
+Add `--follow_camera` and CARLA's spectator camera chases the ego for the whole
+suite, reconnecting by itself across restarts:
+
+```bash
+  --follow_camera behind      # or: top, front
+```
+
+It is a strict observer - it reads the ego's position and moves the camera,
+never ticks the world - so it cannot disturb the simulation or the metrics.
+
+**It needs a CARLA window**, so drop `-RenderOffScreen` from
+`--carla_launch_args`. Rendering a window costs GPU: runs took ~46 s instead of
+~30 s in one measured comparison. Leave it off for long unattended suites.
+
 **Start it with CARLA and Autoware not already running** - the tool needs to own
 both, and will stop any it finds when it first restarts.
 

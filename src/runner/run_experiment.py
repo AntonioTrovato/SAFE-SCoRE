@@ -92,6 +92,16 @@ def main() -> None:
         "before giving up.",
     )
     parser.add_argument(
+        "--follow_camera",
+        nargs="?",
+        const="behind",
+        default="",
+        choices=["behind", "top", "front"],
+        help="Keep CARLA's spectator camera on the ego so runs can be watched. "
+        "Observer only - it never ticks the world. Requires CARLA to be running "
+        "WITHOUT -RenderOffScreen, otherwise there is no window to see it in.",
+    )
+    parser.add_argument(
         "--max_run_attempts",
         type=int,
         default=5,
@@ -156,6 +166,7 @@ def main() -> None:
         wsl_distro=args.wsl_distro,
         max_run_attempts=args.max_run_attempts,
         allow_wsl_shutdown=not args.no_wsl_shutdown,
+        follow_camera=args.follow_camera,
     )
     try:
         runner.run_directory(Path(args.input_dir), num_runs=args.num_runs)
