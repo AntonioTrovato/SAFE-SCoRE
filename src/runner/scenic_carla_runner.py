@@ -360,6 +360,133 @@ def _carla_town_from_scenic(scenic_path: Path) -> tuple[Optional[str], Optional[
     return None, xodr_path
 
 
+def _await_autoware_worker(
+    address: str, port: int, expected_map: str, timeout_s: float
+) -> None:
+    """Pump ticks until Autoware has loaded the map and spawned its ego.
+
+    Runs as a child of ScenicCarlaRunner._start_autoware. Exits 0 once the end
+    state is observed, 1 on timeout. If the CARLA client library aborts the
+    process, the parent sees that as a non-zero exit code instead of dying too.
+    """
+    import sys
+
+    from runner.autoware_session import TickPump
+
+    client = carla.Client(address, port)
+    client.set_timeout(60.0)
+    pump = TickPump(client.get_world(), rate_hz=20.0, client=client)
+    pump.start()
+    try:
+        deadline = time.time() + timeout_s
+        while time.time() < deadline:
+            try:
+                world = client.get_world()
+                on_map = world.get_map().name.split("/")[-1] == expected_map
+                has_ego = any(
+                    a.attributes.get("role_name") == "ego_vehicle"
+                    for a in world.get_actors().filter("vehicle.*")
+                )
+                if on_map and has_ego:
+                    sys.exit(0)
+            except RuntimeError:
+                pass
+            time.sleep(5.0)
+    finally:
+        pump.stop()
+    sys.exit(1)
+
+
+def _follow_camera_worker(address: str, port: int, mode: str) -> None:
+    """Host the spectator camera in a process of its own.
+
+    It must not share a process with the runner. The follower holds a world
+    handle, and when Autoware reloads the map that handle goes stale; using it
+    makes the CARLA client library call abort(), which kills the whole
+    interpreter without raising anything Python can catch. Measured directly:
+
+        Fatal Python error: Aborted
+        Thread 0x00008f74 (most recent call first):
+          File "src/runner/follow_camera.py", line 124 in _worker
+
+    That took the runner down mid-recovery and left CARLA sitting in
+    synchronous mode with nobody to tick it - which looks exactly like "CARLA
+    froze". Isolated here, an abort costs a camera and nothing else, and the
+    runner restarts it.
+    """
+    import time as _time
+
+    from runner.follow_camera import SpectatorFollower
+
+    follower = SpectatorFollower(address=address, port=port, mode=mode)
+    follower.start()
+    while True:
+        _time.sleep(3600)
+
+
+def _clock_healthy_worker(address, port, timestep, drain_ticks=120):
+    """Drain any queued frames, then require one tick == one timestep.
+
+    The single most valuable check in this mode: a world whose clock jumps
+    gives Autoware incoherent sensor timing, so it never publishes a usable
+    trajectory, so autonomous mode never becomes available and the ego
+    never moves. Everything else is downstream of this.
+
+    The drain matters. During Autoware's startup both the tick pump and the
+    bridge's own startup ticks queue work faster than the server retires
+    it, so the first tick afterwards flushes the whole backlog - one tick
+    was measured advancing 9501 frames and 35 seconds. That is a queue to
+    be emptied, not a broken clock, so tick until two consecutive ticks
+    each advance exactly one frame and one timestep.
+
+    Note: sampling get_snapshot().frame *without* ticking returns a cached
+    value, so a free-running world can look frozen. Only tick deltas count.
+
+    Runs as a child process: ticking a hung CARLA can abort the caller
+    outright rather than raising, and that must not take the runner down.
+    Exits 0 if the clock is sane, non-zero otherwise.
+    """
+    import sys
+    try:
+        probe = carla.Client(address, port)
+        probe.set_timeout(60.0)
+        world = probe.get_world()
+        settings = world.get_settings()
+        if not settings.synchronous_mode or not settings.fixed_delta_seconds:
+            log.warning(
+                "clock check: world is not synchronous (sync=%s delta=%s)",
+                settings.synchronous_mode, settings.fixed_delta_seconds,
+            )
+            sys.exit(1)
+
+        good = 0
+        worst = None
+        for _ in range(drain_ticks):
+            before = world.get_snapshot().timestamp
+            world.tick()
+            after = world.get_snapshot().timestamp
+            d_frame = after.frame - before.frame
+            d_time = after.elapsed_seconds - before.elapsed_seconds
+            if d_frame == 1 and abs(d_time - timestep) <= 0.002:
+                good += 1
+                if good >= 2:
+                    sys.exit(0)
+            else:
+                good = 0
+                worst = (d_frame, d_time)
+
+        log.warning(
+            "clock check: still unsettled after %d ticks (last bad tick: "
+            "frame +%s, time +%.4f; expected +1, +%.2f)",
+            drain_ticks, worst[0] if worst else "?",
+            worst[1] if worst else float("nan"), timestep,
+        )
+        sys.exit(1)
+    except RuntimeError as exc:
+        log.warning("clock check: could not reach CARLA (%s)", exc)
+        sys.exit(1)
+
+
 def _run_once_worker(
     tmp_scenic_path: str,
     scenario_id: str,
@@ -614,12 +741,40 @@ class ScenicCarlaRunner:
         # watched. Observer only - it never ticks - and only visible if
         # CARLA was started WITHOUT -RenderOffScreen.
         self._follower = None
+        self._follow_camera_mode = follow_camera
         if follow_camera:
-            from runner.follow_camera import SpectatorFollower
-            self._follower = SpectatorFollower(
-                address=self.address, port=self.port, mode=follow_camera
-            )
-            self._follower.start()
+            self._start_follow_camera()
+
+    def _start_follow_camera(self) -> None:
+        """(Re)start the spectator camera in its own process.
+
+        Called at start-up and again after every environment restart: the
+        camera process can be aborted by the CARLA client library when the map
+        is reloaded, and losing it silently would mean nothing to watch for the
+        rest of the suite.
+        """
+        if not self._follow_camera_mode:
+            return
+        if self._follower is not None and self._follower.is_alive():
+            return
+        self._follower = multiprocessing.Process(
+            target=_follow_camera_worker,
+            args=(self.address, self.port, self._follow_camera_mode),
+            daemon=True,
+        )
+        self._follower.start()
+        log.info(
+            "Spectator camera following the ego (mode=%s, pid=%s).",
+            self._follow_camera_mode, self._follower.pid,
+        )
+
+    def _stop_follow_camera(self) -> None:
+        if self._follower is None:
+            return
+        if self._follower.is_alive():
+            self._follower.terminate()
+            self._follower.join(timeout=5)
+        self._follower = None
 
     # ------------------------------------------------------------------
     def _carla_alive(self, timeout_s: float = 5.0) -> bool:
@@ -652,61 +807,30 @@ class ScenicCarlaRunner:
 
     # ------------------------------------------------------------------
     def _clock_healthy(self, drain_ticks: int = 120) -> bool:
-        """Drain any queued frames, then require one tick == one timestep.
+        """Is one tick exactly one timestep? Delegated to a child process.
 
-        The single most valuable check in this mode: a world whose clock jumps
-        gives Autoware incoherent sensor timing, so it never publishes a usable
-        trajectory, so autonomous mode never becomes available and the ego
-        never moves. Everything else is downstream of this.
-
-        The drain matters. During Autoware's startup both the tick pump and the
-        bridge's own startup ticks queue work faster than the server retires
-        it, so the first tick afterwards flushes the whole backlog - one tick
-        was measured advancing 9501 frames and 35 seconds. That is a queue to
-        be emptied, not a broken clock, so tick until two consecutive ticks
-        each advance exactly one frame and one timestep.
-
-        Note: sampling get_snapshot().frame *without* ticking returns a cached
-        value, so a free-running world can look frozen. Only tick deltas count.
+        See _clock_healthy_worker for what is actually checked and why. The
+        child isolates us from a CARLA client abort against a hung server.
         """
-        try:
-            probe = carla.Client(self.address, self.port)
-            probe.set_timeout(60.0)
-            world = probe.get_world()
-            settings = world.get_settings()
-            if not settings.synchronous_mode or not settings.fixed_delta_seconds:
-                log.warning(
-                    "clock check: world is not synchronous (sync=%s delta=%s)",
-                    settings.synchronous_mode, settings.fixed_delta_seconds,
-                )
-                return False
-
-            good = 0
-            worst = None
-            for _ in range(drain_ticks):
-                before = world.get_snapshot().timestamp
-                world.tick()
-                after = world.get_snapshot().timestamp
-                d_frame = after.frame - before.frame
-                d_time = after.elapsed_seconds - before.elapsed_seconds
-                if d_frame == 1 and abs(d_time - self.timestep) <= 0.002:
-                    good += 1
-                    if good >= 2:
-                        return True
-                else:
-                    good = 0
-                    worst = (d_frame, d_time)
-
+        proc = multiprocessing.Process(
+            target=_clock_healthy_worker,
+            args=(self.address, self.port, self.timestep, drain_ticks),
+            daemon=True,
+        )
+        proc.start()
+        proc.join(timeout=180.0)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=10)
+            log.warning("clock check: timed out - treating the world as unhealthy")
+            return False
+        if proc.exitcode not in (0, 1):
             log.warning(
-                "clock check: still unsettled after %d ticks (last bad tick: "
-                "frame +%s, time +%.4f; expected +1, +%.2f)",
-                drain_ticks, worst[0] if worst else "?",
-                worst[1] if worst else float("nan"), self.timestep,
+                "clock check: CARLA client died (exit %s) - server likely hung",
+                proc.exitcode,
             )
-            return False
-        except RuntimeError as exc:
-            log.warning("clock check: could not reach CARLA (%s)", exc)
-            return False
+        return proc.exitcode == 0
+
 
     def _duplicate_node_count(self) -> int:
         """Stale DDS registrations left by hard-killed Autoware instances."""
@@ -809,9 +933,7 @@ class ScenicCarlaRunner:
         )
 
     def shutdown(self) -> None:
-        if self._follower is not None:
-            self._follower.stop()
-            self._follower = None
+        self._stop_follow_camera()
         """Stops the CARLA server this runner itself launched via
         --carla_exe, if any. A no-op if CARLA was already running when the
         pipeline started (nothing to clean up) or --carla_exe wasn't set."""
@@ -851,14 +973,14 @@ class ScenicCarlaRunner:
         # SIGINT the launch itself, which propagates to every node.
         subprocess.run(
             ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-             "pkill -INT -f 'ros2 launch autoware_launch' 2>/dev/null; true"],
+             "pkill -INT -f '[r]os2 launch autoware_launch' 2>/dev/null; true"],
             capture_output=True,
         )
         deadline = time.time() + graceful_wait_s
         while time.time() < deadline:
             left = subprocess.run(
                 ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-                 "pgrep -c -f component_container || echo 0"],
+                 "pgrep -c -f '[c]omponent_container' || echo 0"],
                 capture_output=True, text=True,
             ).stdout.strip().split()
             if left and left[-1] == "0":
@@ -869,8 +991,8 @@ class ScenicCarlaRunner:
         log.warning("Autoware did not exit cleanly; forcing it (may leave stale DDS state).")
         subprocess.run(
             ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-             "pkill -f 'ros2 launch autoware_launch'; pkill -f component_container; "
-             "pkill -f autoware_carla_interface; pkill -f rviz2; sleep 3"],
+             "pkill -f '[r]os2 launch autoware_launch'; pkill -f '[c]omponent_container'; "
+             "pkill -f '[a]utoware_carla_interface'; pkill -f '[r]viz2'; sleep 3"],
             capture_output=True,
         )
 
@@ -891,7 +1013,7 @@ class ScenicCarlaRunner:
         # Refuse to start a second stack; two bridges means two tick masters.
         leftover = subprocess.run(
             ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
-             "pgrep -c -f component_container || echo 0"],
+             "pgrep -c -f '[c]omponent_container' || echo 0"],
             capture_output=True, text=True,
         ).stdout.strip().split()
         if leftover and leftover[-1] not in ("0", ""):
@@ -910,30 +1032,34 @@ class ScenicCarlaRunner:
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 
-        client = carla.Client(self.address, self.port)
-        client.set_timeout(60.0)
-        pump = TickPump(client.get_world(), rate_hz=20.0, client=client)
-        pump.start()
-        try:
-            deadline = time.time() + timeout_s
-            while time.time() < deadline:
-                try:
-                    world = client.get_world()
-                    on_map = world.get_map().name.split("/")[-1] == expected_map
-                    has_ego = any(
-                        a.attributes.get("role_name") == "ego_vehicle"
-                        for a in world.get_actors().filter("vehicle.*")
-                    )
-                    if on_map and has_ego:
-                        log.info("Autoware is up (map %s loaded, ego spawned).", expected_map)
-                        return True
-                except RuntimeError:
-                    pass
-                time.sleep(5.0)
-        finally:
-            pump.stop()
+        # The pumping/waiting below talks to CARLA, and the CARLA client library
+        # can abort the whole process (STATUS_STACK_BUFFER_OVERRUN, 0xC0000409)
+        # when the server is hung rather than raising a catchable error. Run it
+        # in a child, exactly as every scenario run is, so a hung CARLA costs us
+        # a child process instead of the runner itself.
+        proc = multiprocessing.Process(
+            target=_await_autoware_worker,
+            args=(self.address, self.port, expected_map, timeout_s),
+            daemon=True,
+        )
+        proc.start()
+        proc.join(timeout=timeout_s + 60.0)
 
-        log.error("Autoware did not finish starting within %.0fs.", timeout_s)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join(timeout=10)
+            log.error("Autoware startup watcher hung; giving up on this attempt.")
+            return False
+        if proc.exitcode == 0:
+            log.info("Autoware is up (map %s loaded, ego spawned).", expected_map)
+            return True
+        if proc.exitcode and proc.exitcode not in (1,):
+            log.error(
+                "CARLA client died while waiting for Autoware (exit %s) - "
+                "the server is very likely hung.", proc.exitcode,
+            )
+        else:
+            log.error("Autoware did not finish starting within %.0fs.", timeout_s)
         return False
 
     def _recover(self, attempts: int = 3) -> bool:
@@ -954,6 +1080,11 @@ class ScenicCarlaRunner:
 
         for attempt in range(1, attempts + 1):
             log.warning("Recovering the environment (attempt %d/%d)...", attempt, attempts)
+            # Put the camera down first. It holds a world handle, and a restart
+            # plus Autoware's map reload makes that handle stale - using a stale
+            # one aborts the CARLA client library outright. Picked back up once
+            # the environment is healthy again.
+            self._stop_follow_camera()
             if self.engine == "autoware":
                 self._kill_autoware()
             self._restart_carla_server()
@@ -962,6 +1093,7 @@ class ScenicCarlaRunner:
 
             if self.environment_healthy():
                 log.info("Environment recovered.")
+                self._start_follow_camera()
                 return True
 
             # Duplicates survive a process restart - they live in DDS, not in

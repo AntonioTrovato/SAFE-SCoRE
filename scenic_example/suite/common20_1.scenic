@@ -16,13 +16,13 @@ param POLICY = 'built_in'
 # PARAMETERS AND CONSTANTS      #
 #################################
 
-param EGO_SPEED = 6
-param EGO_BRAKE = 0.5
-param EGO_SAFETY_DIST = 6
-param EGO_BYPASS_DIST = 10
-param CAR1_SPEED = 6
-param CAR1_BYPASS_DIST = 10
-param CAR2_SPEED = 6
+param EGO_SPEED = VerifaiRange(6, 11)
+param EGO_BRAKE = VerifaiRange(0.5, 1.0)
+param EGO_SAFETY_DIST = VerifaiRange(6, 10)
+param EGO_BYPASS_DIST = VerifaiRange(10, 12)
+param CAR1_SPEED = VerifaiRange(6, 11)
+param CAR1_BYPASS_DIST = VerifaiRange(10, 12)
+param CAR2_SPEED = VerifaiRange(6, 11)
 
 MODEL = 'vehicle.lincoln.mkz_2017'
 CAR1_DIST = 10
@@ -107,7 +107,28 @@ behavior Car2Behavior(trajectory):
 class LaneChangeCar(Car):
     switched: False
 
-ego = new LaneChangeCar at egoSpawnPt,
+if globalParameters.POLICY == 'metadrive_ppo' or globalParameters.POLICY == 'ppo_with_built_in':
+    from metadrive_expert import MetaDrivePPOPolicyCar, MetaDrivePPOFollowLaneBehavior, MetaDrivePPOUpdateState
+    behavior EgoPPOBehavior():
+        do MetaDrivePPOFollowLaneBehavior() for 1 seconds
+        try:
+            do MetaDrivePPOFollowLaneBehavior()
+        interrupt when (ego.laneSection._fasterLane is not None) and (distance to car1 >= globalParameters.EGO_BYPASS_DIST) and (distance to car2 >= globalParameters.EGO_BYPASS_DIST) and (not self.switched):
+            self.switched = True
+            do LaneChangeBehavior(target_speed=globalParameters.EGO_SPEED, laneSectionToSwitch=ego.laneSection._fasterLane)
+            do MetaDrivePPOFollowLaneBehavior()
+        interrupt when (ego.laneSection._slowerLane is not None) and (distance to car1 >= globalParameters.EGO_BYPASS_DIST) and (distance to car2 >= globalParameters.EGO_BYPASS_DIST) and (not self.switched):
+            self.switched = True
+            do LaneChangeBehavior(target_speed=globalParameters.EGO_SPEED, laneSectionToSwitch=ego.laneSection._slowerLane)
+            do MetaDrivePPOFollowLaneBehavior()
+        interrupt when withinDistanceToObjsInLaneNoInter(self, globalParameters.EGO_SAFETY_DIST):
+            take SetBrakeAction(globalParameters.EGO_BRAKE)
+    ego = new MetaDrivePPOPolicyCar at egoSpawnPt,
+          with blueprint MODEL,
+          with behavior EgoPPOBehavior()
+    require monitor MetaDrivePPOUpdateState()
+else:
+    ego = new LaneChangeCar at egoSpawnPt,
           with blueprint MODEL,
           with behavior EgoBehavior()
 
@@ -118,7 +139,6 @@ car1 = new LaneChangeCar at car1SpawnPt,
 car2 = new Car at car2SpawnPt,
       with blueprint MODEL,
       with behavior Car2Behavior(car2Trajectory)
-
 
 #################################
 # RECORDING                     #

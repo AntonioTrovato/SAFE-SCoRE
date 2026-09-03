@@ -12,6 +12,7 @@ Usage (from the repository root):
 """
 
 import argparse
+import faulthandler
 import logging
 import sys
 from pathlib import Path
@@ -183,4 +184,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    # A hard crash inside the CARLA client library kills the interpreter
+    # without a Python traceback. faulthandler turns the fatal signal into
+    # a stack dump on stderr, which is the only way to see where it died.
+    faulthandler.enable()
     main()

@@ -385,6 +385,15 @@ suite, reconnecting by itself across restarts:
 It is a strict observer - it reads the ego's position and moves the camera,
 never ticks the world - so it cannot disturb the simulation or the metrics.
 
+It runs in **its own process**, and is stopped before each environment restart
+and started again afterwards. This is not cosmetic: a CARLA connection held
+across Autoware's map reload goes stale, and `libcarla` reacts to a stale handle
+by aborting the process outright - no Python exception, nothing catchable. When
+the camera lived in a thread of the runner, that abort killed the whole
+pipeline mid-recovery and left CARLA sitting in synchronous mode with nobody to
+tick it, which looks exactly like CARLA having frozen. See
+[docs/KNOWN_INSTABILITIES.md](docs/KNOWN_INSTABILITIES.md) §1.6-1.7.
+
 **It needs a CARLA window**, so drop `-RenderOffScreen` from
 `--carla_launch_args`. Rendering a window costs GPU: runs took ~46 s instead of
 ~30 s in one measured comparison. Leave it off for long unattended suites.
@@ -401,8 +410,10 @@ What it does on its own:
    this passes.
 3. Runs each scenario *n* times, writing one log per run.
 4. **On any crash** - CARLA or Autoware - stops **both**, restarts **both**,
-   re-verifies, and retries the same run. Up to 5 attempts (`--max_run_attempts`),
-   then it discards that scenario and moves on.
+   re-verifies, and retries the same run. Up to `--max_run_attempts` attempts
+   (default 5), then it discards that scenario and moves on. Raise it for long
+   unattended suites; the same limit and the same policy apply in
+   `--engine behavior_agent`.
 5. Prints a summary of what completed and what was discarded.
 
 Both sides are always restarted together, whichever failed: a CARLA crash leaves

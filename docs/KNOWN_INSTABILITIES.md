@@ -147,6 +147,71 @@ e.g. a dead CARLA connection retry loop) - killing it
 
 ---
 
+## 1.6 The CARLA client aborts the process; it does not raise
+
+The most damaging failure mode in this whole environment, because nothing in
+Python can defend against it. Using a stale world handle - one obtained before
+Autoware reloaded the map - makes `libcarla` call `abort()`. The interpreter
+dies immediately: no exception, no traceback, no `try/except` anywhere in the
+call stack gets a chance to run, and Windows records no Application Error
+event.
+
+**Evidence** (`faulthandler.enable()` is the only thing that reveals it):
+
+```
+Fatal Python error: Aborted
+
+Thread 0x00008f74 (most recent call first):
+  File "src/runner/follow_camera.py", line 124 in _worker
+  File "threading.py", line 953 in run
+```
+
+The runner's main thread was elsewhere entirely - blocked in
+`multiprocessing.Process.join()` waiting for Autoware to start - so a single
+background thread took the entire pipeline down.
+
+**Mitigation:** every component that holds a CARLA connection runs in its own
+process. In this repository that is each scenario run, the Autoware-startup
+tick pump, the clock health check, and the spectator camera. The camera is
+additionally stopped before each restart and started again afterwards, so it
+never holds a handle across a map reload.
+
+**Diagnostic value:** if a Python process managing CARLA disappears with no
+traceback and no crash event, this is the first thing to suspect. Enable
+`faulthandler` and reproduce.
+
+---
+
+## 1.7 A "frozen" CARLA is usually a CARLA nobody is ticking
+
+A recurring false diagnosis. In synchronous mode the simulation advances only
+when a client ticks. If the tick master dies, the window stops repainting and
+Windows reports `Responding=False`, so CARLA looks hung or crashed. It is
+neither - the server is perfectly healthy and answers immediately.
+
+**Evidence:** probing a CARLA that appeared frozen, with a dead runner:
+
+```
+server version: 0.9.15  (responded in 0.0s)
+map: Carla/Maps/Town05
+sync: True   delta: 0.05
+actors: 0
+frames advanced in 2s without ticking: 0
+```
+
+Instant response, correct map, synchronous mode on. `actors: 0` shows Autoware's
+bridge had connected but never spawned its ego - it cannot finish its own
+startup without ticks (see 2.6).
+
+High CPU does not contradict this; the process was burning ~1.7 cores while
+"frozen".
+
+**How to tell the two apart:** connect a fresh client with a short timeout and
+ask for the server version. If it answers, CARLA is fine and the problem is
+whoever should be ticking it.
+
+---
+
 # Part 2 - Autoware
 
 ## 2.1 Teleport-induced cascade: `pose_instability_detector` then `mission_planner`

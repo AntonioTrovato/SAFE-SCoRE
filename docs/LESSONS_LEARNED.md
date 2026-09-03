@@ -213,9 +213,16 @@ original behaviour. The runner now restores the settings explicitly.
 
 Recorded because each one cost real time:
 
-- **`pgrep -f <pattern>` matches the shell running it.** This produced a
-  convincing but entirely false "two Autoware bridges are running" diagnosis.
-  Check the parent process, or filter on the executable.
+- **`pgrep -f <pattern>` matches the shell running it.** `bash -lic "pgrep -c
+  -f component_container"` returns `1` with Autoware completely shut down,
+  because the shell's own command line contains the pattern. This first
+  produced a false "two Autoware bridges are running" diagnosis, and later - in
+  the shutdown wait loop - meant the count could never reach zero, so Autoware
+  was force-killed on *every* restart and left the stale DDS state of §3 behind.
+  Bracket the first character (`'[c]omponent_container'`) so the pattern cannot
+  match itself, or filter on the executable name. The same trap applies to
+  PowerShell: a `Where-Object { $_.CommandLine -like '*foo*' }` filter matches
+  the very process evaluating it - exclude `$PID`.
 - **`get_snapshot().frame` without ticking is cached** (see §1).
 - **A degraded environment invalidates every experiment run against it.** After
   any CARLA crash or Autoware node death, rebuild a clean environment before
@@ -243,3 +250,71 @@ Establish a working baseline with process management **off** (no `--carla_exe`,
 no `--autoware_map_path`), confirm real runs, and only then enable automation -
 so that when something breaks you know whether it is the integration or the
 orchestration.
+
+---
+## 14. The CARLA client aborts the process; nothing can catch it
+
+The single most expensive lesson here. `libcarla` responds to a stale world
+handle - one obtained before the map was reloaded - by calling `abort()`. The
+process dies on the spot: no Python exception, no traceback, no Windows crash
+event, and no `try/except` in the stack ever runs.
+
+The consequence was a pipeline that vanished mid-recovery for hours without
+explanation, leaving CARLA in synchronous mode with nobody to tick it - which
+looked exactly like "CARLA froze" and sent the investigation in the wrong
+direction repeatedly.
+
+**Rules that follow:**
+
+- **Anything holding a CARLA connection runs in its own process.** Not a
+  thread - a thread's abort kills its parent. Here: each scenario run, the
+  Autoware-startup tick pump, the clock health check, and the spectator camera.
+- **Drop CARLA handles across a map reload.** The camera is stopped before every
+  restart and restarted once the environment is healthy again.
+- **A child's death is recoverable information**; the parent reads the exit code
+  and retries. A parent's death is the end of the suite.
+
+## 15. `faulthandler` is the only way to see a native abort
+
+Three separate wrong explanations were offered before this was enabled -
+including blaming the user's Ctrl-C, which was wrong. None of the usual evidence
+existed: no traceback, no Windows Application Error event, no non-zero exit code
+recorded anywhere.
+
+One line in `run_experiment.py`:
+
+```python
+if __name__ == "__main__":
+    faulthandler.enable()
+```
+
+turned a silent disappearance into a stack that named the guilty thread and file
+on the first reproduction:
+
+```
+Fatal Python error: Aborted
+Thread 0x00008f74 (most recent call first):
+  File "src/runner/follow_camera.py", line 124 in _worker
+```
+
+Enable it before theorising about any process that dies without a traceback.
+
+## 16. Confirm which process actually died before blaming a component
+
+"CARLA is frozen" was, every time, "the runner died and CARLA is waiting for a
+tick". Two cheap checks settle it in seconds and should come before any other
+diagnosis:
+
+```powershell
+# is the orchestrator even alive?
+Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+  Where-Object { $_.CommandLine -like '*run_experiment*' }
+```
+
+```python
+# is CARLA actually hung, or just un-ticked?
+c = carla.Client('127.0.0.1', 2000); c.set_timeout(20.0)
+print(c.get_server_version())     # answers instantly if healthy
+```
+
+A CARLA that answers is not the problem, however frozen its window looks.
