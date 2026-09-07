@@ -1,0 +1,1045 @@
+<?xml version='1.0' encoding='utf-8'?>
+<OpenScenario>
+  <FileHeader author="trial" date="2023-03-23T12:00:00" description="myscenario" revMajor="1" revMinor="0" />
+  <ParameterDeclarations />
+  <CatalogLocations />
+  <RoadNetwork>
+    <LogicFile filepath="BEL_Putte-1_1_I-1-1.xodr" />
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="ego_vehicle">
+      <Vehicle name="vehicle.lincoln.mkz2017" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="5.0" width="2.0" />
+        </BoundingBox>
+        <Performance maxAcceleration="10.0" maxDeceleration="10.0" maxSpeed="69.0" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="ego_vehicle" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc30">
+      <Vehicle name="vehicle.carlamotors.carlacola" vehicleCategory="truck">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc35">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc314">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc319">
+      <Vehicle name="vehicle.diamondback.century" vehicleCategory="bicycle">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc323">
+      <Vehicle name="vehicle.diamondback.century" vehicleCategory="bicycle">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc333">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc334">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc337">
+      <Vehicle name="vehicle.carlamotors.carlacola" vehicleCategory="truck">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc338">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="Npc339">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <BoundingBox>
+          <Center x="2.0" y="0.0" z="0.9" />
+          <Dimensions height="1.8" length="4.5" width="2.1" />
+        </BoundingBox>
+        <Performance maxAcceleration="200.0" maxDeceleration="10.0" maxSpeed="69.444" />
+        <Axles>
+          <FrontAxle maxSteering="0.5" positionX="3.1" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+          <RearAxle maxSteering="0.0" positionX="0.0" positionZ="0.3" trackWidth="1.8" wheelDiameter="0.6" />
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation" />
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <GlobalAction>
+          <EnvironmentAction>
+            <Environment name="myenvironment">
+              <TimeOfDay animation="false" dateTime="2023-03-20T12:00:00" />
+              <Weather cloudState="free">
+                <Sun azimuth="0.0" elevation="1.31" intensity="0.75" />
+                <Fog visualRange="10000.0" />
+                <Precipitation intensity="0.5" precipitationType="rain" />
+              </Weather>
+              <RoadCondition frictionScaleFactor="1.0" />
+            </Environment>
+          </EnvironmentAction>
+        </GlobalAction>
+        <Private entityRef="ego_vehicle">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="5.6227569" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <RoutingAction>
+              <AcquirePositionAction>
+                <Position>
+                  <WorldPosition h="2.4007496440515492" x="-23.992448327799302" y="-2.6132848569536913" z="0.0" />
+                </Position>
+              </AcquirePositionAction>
+            </RoutingAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="HeroAgent">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="1.1424199" x="-22.93875596025482" y="-32.5940076982773" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          </Private>
+        <Private entityRef="Npc30">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="0.0" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-0.7690572" x="-30.833190193044818" y="-0.9418682924731898" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc30control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc35">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="0.0" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-0.7690572" x="-37.102462823361016" y="5.125740997834894" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc35control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc314">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="1.0835638" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="4.0975741" x="-40.5882283384081" y="-60.25310699765259" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc314control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc319">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="7.7678966" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="4.0949624" x="-11.660903070358556" y="-10.982717823155236" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc319control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc323">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="0.41178665" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-2.1961281" x="1.6071460958734989" y="7.652223235505575" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc323control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc333">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="11.321569" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-1.6526843" x="-9.700276530431713" y="-24.61555602681293" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc333control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc334">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="9.9320485" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-1.8342414" x="-7.811660103505057" y="-14.378386580942998" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc334control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc337">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="2.8811763" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="-1.964621" x="-6.5247483283284415" y="-8.42031185044702" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc337control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc338">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="4.7276642" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="4.0759978" x="10.857946916251631" y="18.080339825332743" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc338control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="Npc339">
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsDimension="time" dynamicsShape="step" value="1.0" />
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="3.5904047" />
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition h="4.2589243" x="25.608093426249983" y="43.24041232004045" z="0.0" />
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <ControllerAction>
+              <AssignControllerAction>
+                <Controller name="Npc339control">
+                  <Properties>
+                    <Property name="module" value="external_control" />
+                  </Properties>
+                </Controller>
+              </AssignControllerAction>
+              <OverrideControllerValueAction>
+                <Throttle active="false" value="0.0" />
+                <Brake active="false" value="0.0" />
+                <Clutch active="false" value="0.0" />
+                <ParkingBrake active="false" value="0.0" />
+                <SteeringWheel active="false" value="0.0" />
+                <Gear active="false" number="0.0" />
+              </OverrideControllerValueAction>
+            </ControllerAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="mystory">
+      <Act name="my_act">
+        <ManeuverGroup maximumExecutionCount="1" name="Npc30ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc30" />
+          </Actors>
+          <Maneuver name="Npc30_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc35ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc35" />
+          </Actors>
+          <Maneuver name="Npc35_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc314ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc314" />
+          </Actors>
+          <Maneuver name="Npc314_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc319ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc319" />
+          </Actors>
+          <Maneuver name="Npc319_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc323ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc323" />
+          </Actors>
+          <Maneuver name="Npc323_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc333ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc333" />
+          </Actors>
+          <Maneuver name="Npc333_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc334ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc334" />
+          </Actors>
+          <Maneuver name="Npc334_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc337ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc337" />
+          </Actors>
+          <Maneuver name="Npc337_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc338ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc338" />
+          </Actors>
+          <Maneuver name="Npc338_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <ManeuverGroup maximumExecutionCount="1" name="Npc339ManeuverGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="Npc339" />
+          </Actors>
+          <Maneuver name="Npc339_maneuver">
+            <Event name="StartAutopilot" priority="overwrite">
+              <Action name="StartAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="true" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="0.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="StopAutopilot" priority="overwrite">
+              <Action name="StopAutopilot">
+                <PrivateAction>
+                  <ActivateControllerAction longitudinal="false" />
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+                    <ByValueCondition>
+                      <SimulationTimeCondition rule="greaterThan" value="100.0" />
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <StartTrigger>
+          <ConditionGroup>
+            <Condition conditionEdge="rising" delay="0.0" name="startTrigger">
+              <ByValueCondition>
+                <SimulationTimeCondition rule="greaterThan" value="0.0" />
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StartTrigger>
+      </Act>
+    </Story>
+    <StopTrigger>
+      <ConditionGroup>
+        <Condition conditionEdge="none" delay="1.0" name="myTrigger">
+          <ByValueCondition>
+            <StoryboardElementStateCondition state="completeState" storyboardElementRef="mystory" storyboardElementType="story" />
+          </ByValueCondition>
+        </Condition>
+      </ConditionGroup>
+    </StopTrigger>
+  </Storyboard>
+</OpenScenario>

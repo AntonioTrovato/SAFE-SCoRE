@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""
-AUTOWARE_converter.py
 
-Autoware variant of CARLA_converter.py. Identical parsing and NPC
-generation; the only difference is that the ego carries no Scenic
-behavior, because Autoware drives it.
-
-Differences from CARLA_converter.py:
-  - no `behavior EgoBehavior()` block is generated
-  - the ego object gets `with rolename 'ego_vehicle'` instead of
-    `with behavior ...`, so the bridge and the recorder can find it
-  - no `with initialSpeed` / `SetSpeedAction` on the ego (that is control)
-  - no EGO_SAFETY_DIST / EGO_BRAKE constants
-  - the generated header carries the recorded ego pose in Autoware's
-    `spawn_point` format
-
-The ego is still *spawned* by Scenic so that the recorded start pose is
-preserved and runner/recorder.py still has an `ego` object to log through.
-If your bridge spawns its own ego instead of adopting this one, drop the
-ego declaration here AND change the runner's monitor to locate the actor
-by rolename - the injected monitor currently references `ego` directly.
-"""
 
 
 import argparse
@@ -51,6 +30,7 @@ DEFAULT_PED_SPEED      = 1.4   # m/s — when a pedestrian profile is empty
 EGO_SAFETY_DIST        = 8.0   # m — ego brakes when anything is closer
 EGO_BRAKE              = 0.8   # brake intensity for the safety interrupt
 GOAL_RADIUS            = 5.0   # m — ego counts as arrived at its goal
+SPAWN_LIFT_OFFSETS     = (0.3, 0.5, 0.8, 1.2)  # m — retry heights (see docstring)
 MIN_GOAL_TRIP          = 20.0  # m — below this, skip goal-based terminate
 
 
@@ -558,6 +538,46 @@ class ScenicRulesWriter:
         self._w('"""')
         self._w()
 
+    def _spawn_height_fix(self):
+        """Emit the CARLA 0.9.15 spawn-height compatibility block.
+
+        See the module docstring for why this is emitted as code instead of
+        as a z coordinate (Scenic's 2D mode discards object z).
+        """
+        self._w()
+        self._w("# " + "-" * 68)
+        self._w("# CARLA 0.9.15 spawn-height compatibility (emitted by the converter).")
+        self._w("# Scenic places ground actors at waypoint.z + 0.5; on 0.9.15 that is")
+        self._w("# inside the generated road mesh, so try_spawn_actor() refuses the")
+        self._w("# spawn. Retry ONLY refused spawns, slightly higher, until they clear.")
+        self._w("# Recorded x/y/heading are never modified. Harmless on 0.9.16, where")
+        self._w("# the first attempt already succeeds.")
+        self._w("import carla as _carla")
+        self._w()
+        self._w("_ss_orig_spawn = _carla.World.try_spawn_actor")
+        self._w()
+        self._w("def _ss_spawn_with_lift(world, blueprint, transform, *args, **kwargs):")
+        self._w("    actor = _ss_orig_spawn(world, blueprint, transform, *args, **kwargs)")
+        self._w("    if actor is not None:")
+        self._w("        return actor")
+        self._w("    _bp = getattr(blueprint, 'id', '') or ''")
+        self._w("    if 'vehicle' not in _bp and 'walker' not in _bp:")
+        self._w("        return actor")
+        self._w("    _loc = transform.location")
+        self._w(f"    for _extra in {SPAWN_LIFT_OFFSETS!r}:")
+        self._w("        _t = _carla.Transform(")
+        self._w("            _carla.Location(x=_loc.x, y=_loc.y, z=_loc.z + _extra),")
+        self._w("            transform.rotation)")
+        self._w("        actor = _ss_orig_spawn(world, blueprint, _t, *args, **kwargs)")
+        self._w("        if actor is not None:")
+        self._w("            print(f'  spawn lifted +{_extra:.2f} m to clear the road ({_bp})')")
+        self._w("            return actor")
+        self._w("    return None")
+        self._w()
+        self._w("_carla.World.try_spawn_actor = _ss_spawn_with_lift")
+        self._w("# " + "-" * 68)
+        self._w()
+
     def _map_and_model(self):
         self._banner("MAP AND MODEL")
         self._w(f"param map = localPath('{self._relative_map_path()}')")
@@ -574,6 +594,7 @@ class ScenicRulesWriter:
         self._w("param real_time = 1  # 1 = play at real speed, "
                 "0 = as fast as the machine allows")
         self._w("model scenic.simulators.carla.model")
+        self._spawn_height_fix()
         self._w()
         self._w("# Run (CARLA server must be running):")
         self._w("#   scenic <this file> --simulate --2d")
