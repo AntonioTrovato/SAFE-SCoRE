@@ -242,7 +242,24 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 # default or, without touching the code, by setting the environment
 # variable - handy for A/B-ing two converters over the same input:
 #
-#     SAFE_SCORE_XOSC_CONVERTER=mypkg.my_converter:convert
+#   converter.AUTOWARE_converter:convert_file     (default - Autoware target)
+#       The ego is spawned at its recorded pose with rolename 'ego_vehicle'
+#       and NO Scenic behavior, because Autoware controls it. This is the
+#       project default because Autoware is the target SUT, and Autoware
+#       requires CARLA 0.9.15 (see requirements.txt).
+#
+#       NOTE: with no Autoware bridge attached, the ego spawns and then
+#       never moves. That is correct for this target, but it means the
+#       resulting logs describe a stationary ego, and any SOTIF metric
+#       derived from them describes a parked vehicle - not a driving one.
+#       Use the converter below if you want Scenic to drive the ego.
+#
+#   converter.CARLA_converter:convert_file        (Scenic-driven ego)
+#       The ego is driven by Scenic's own compiled behavior: it follows its
+#       recorded route, and the logs describe a moving vehicle. Use this for
+#       ordinary SAFE-SCoRE runs with no Autoware in the loop:
+#
+#           SAFE_SCORE_XOSC_CONVERTER=converter.CARLA_converter:convert_file
 #
 DEFAULT_XOSC_CONVERTER = "converter.AUTOWARE_converter:convert_file"
 
