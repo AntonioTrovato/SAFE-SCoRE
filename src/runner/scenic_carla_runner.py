@@ -950,22 +950,24 @@ class ScenicCarlaRunner:
         )
 
     def shutdown(self) -> None:
+        """Stop what this runner started: the camera, Autoware, and CARLA.
+
+        A no-op for CARLA if it was already running when the pipeline started
+        (nothing of ours to clean up) or --carla_exe wasn't given.
+
+        CARLA has to be killed by image name, not through the handle we hold.
+        `CarlaUE4.exe` is only a launcher: it spawns
+        `CarlaUE4-Win64-Shipping.exe` and exits immediately, so by the time we
+        get here `self._carla_proc` has long since terminated - terminating it
+        again stops nothing and leaves the real server running.
+        """
         self._stop_follow_camera()
-        """Stops the CARLA server this runner itself launched via
-        --carla_exe, if any. A no-op if CARLA was already running when the
-        pipeline started (nothing to clean up) or --carla_exe wasn't set."""
         if self._autoware_proc is not None:
             self._kill_autoware()
-        if self._carla_proc is None or self._carla_proc.poll() is not None:
+        if self._carla_proc is None:
             return
         log.info("Stopping CARLA server (%s)...", self.carla_exe)
-        self._carla_proc.terminate()
-        try:
-            self._carla_proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            self._carla_proc.kill()
-            self._carla_proc.wait()
-        self._carla_proc = None
+        self._kill_all_carla()
 
 
     # ------------------------------------------------------------------
@@ -1037,6 +1039,30 @@ class ScenicCarlaRunner:
             self._kill_autoware()
 
         expected_map = str(self.autoware_map_path).rstrip("/").split("/")[-1]
+
+        # Fail fast if the map path does not exist inside WSL. Autoware starts
+        # perfectly happily without a map, and the only symptom is localization
+        # failing much later with "align server failed" - five attempts and ten
+        # minutes away from the actual cause.
+        #
+        # The usual cause is shell expansion: in PowerShell a double-quoted
+        # "$HOME/autoware/..." is expanded to the *Windows* home before it ever
+        # reaches WSL. Pass the literal Linux path, or single-quote it.
+        probe = subprocess.run(
+            ["wsl.exe", "-d", self.wsl_distro, "-e", "bash", "-lic",
+             f'test -d "{self.autoware_map_path}" && echo OK || echo MISSING'],
+            capture_output=True, text=True,
+        ).stdout
+        if "MISSING" in probe:
+            raise RuntimeError(
+                "Autoware map path not found inside WSL: "
+                f"{self.autoware_map_path}. Autoware would start without a "
+                "map and localization would later fail with 'align server "
+                "failed'. If you passed \"$HOME/...\" from PowerShell it was "
+                "expanded to your Windows home - pass the literal Linux "
+                "path instead, e.g. "
+                "/home/<user>/autoware/autoware_map/Town05"
+            )
         cmd = (
             "cd ~/autoware && source install/setup.bash && "
             "CARLA_EXTERNAL_TICK=1 ros2 launch autoware_launch e2e_simulator.launch.xml "

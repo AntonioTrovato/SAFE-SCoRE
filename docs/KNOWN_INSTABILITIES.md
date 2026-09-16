@@ -406,3 +406,87 @@ peaked at **4.50-4.96 m/s**. After raising the ceiling to 11.11 and publishing
 sample the ego at 6-11 m/s and run NPCs at 6 m/s, so at the stock 4.17 the ego
 is permanently the slowest vehicle on the road and cannot complete the
 overtakes the scenarios are built around.
+
+## 2.10 Autoware will not launch after a WSL restart
+
+Autoware's DDS layer (CycloneDDS) needs loopback multicast and large socket
+buffers. Those are kernel settings, applied with `sudo`, and **they do not
+survive a restart of the WSL VM** — which happens on `wsl --shutdown`, on a
+Windows reboot, and when every Ubuntu terminal is closed and left idle.
+
+**Evidence.** The runner only reports `pre-flight: Autoware nodes are missing`,
+three times. Launching Autoware by hand shows the real cause:
+
+```
+selected interface "lo" is not multicast-capable: disabling multicast
+failed to increase socket receive buffer size to at least 10485760 bytes, current is 8388608 bytes
+[rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain
+[launch]: error creating node: rcl node's rmw handle is invalid
+```
+
+with `net.core.rmem_max = 4194304` and no `MULTICAST` flag on `lo`. Zero
+Autoware processes were running — it was not failing to become ready, it was
+failing to start.
+
+**Mitigation.** Apply the four settings before a session (README, Mode 2,
+Step 1) and keep one Ubuntu terminal open. The pipeline cannot do it itself,
+because `sudo` needs a password.
+
+---
+
+## 2.11 A run straight after a successful one starts with the ego still moving
+
+Between successful runs nothing is restarted: the next run reuses the same CARLA
+and the same Autoware ego actor, and teleports it to the new start pose. The ego
+arrives still carrying the motion of the run that just finished.
+
+**Evidence.** Two scenarios run back to back, 16 September:
+
+```
+[common20_1] run 1 completed in 32.1s
+[common30_1] run 1/1 (attempt 1/5)
+[autoware] placing ego at carla=(-132.0, -24.4) yaw=-269.6
+[autoware] ego still moving; initializing localization anyway
+localization initialize: vehicle still moving, retry 1/3
+localization initialize: vehicle still moving, retry 2/3
+localization initialize failed: The vehicle is not stopped.
+AutowareSessionError: localization would not initialize at the scene's ego pose
+```
+
+After the paired restart, the retry started from rest and succeeded:
+
+```
+[autoware] ego settled (carla 0.00, autoware 0.00 m/s)
+[autoware] engaged, ready to drive
+[common30_1] run 1 completed in 27.1s
+```
+
+The same `The vehicle is not stopped.` appeared on run 2 of an earlier suite
+that day, again immediately after a successful run 1. The settle wait
+(`_wait_until_stopped`, 15 s) was not enough to bring the ego to rest.
+
+**CARLA then crashes during the cleanup of that failed attempt:**
+
+```
+[INFO] reset: stop=True clear_route=True
+INFO:  streaming client: connection failed ...        (repeated)
+[WARNING] [common30_1] run 1: worker process exited abnormally (code 3221226505)
+```
+
+CARLA was demonstrably alive up to this point — the failed attempt had
+connected, placed the ego and run the settle wait and three localization
+retries against it. **Why** it dies during this cleanup is not established; the
+log shows when, not why.
+
+**How it looks on screen, and why that misleads.** With no restart between runs,
+the camera goes straight from the successful run to the next attempt on the same
+window and the same ego. The crash popup therefore appears roughly half a minute
+after the successful run finishes and looks as if it belongs to it. It does not:
+the successful run's log is complete and contains no error. The chain is
+
+> success → next run starts with the ego still moving → localization refuses →
+> cleanup of the failed attempt → CARLA crashes → paired restart → success
+
+**Mitigation.** The recovery policy already handles it — every occurrence so far
+succeeded on the next attempt. Fixing it properly means bringing the ego to rest
+before the teleport rather than waiting for it afterwards; not yet done.

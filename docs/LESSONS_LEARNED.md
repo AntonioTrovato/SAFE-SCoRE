@@ -314,3 +314,65 @@ print(c.get_server_version())     # answers instantly if healthy
 ```
 
 A CARLA that answers is not the problem, however frozen its window looks.
+
+---
+
+## 17. A shell variable can silently change which machine a path is on
+
+The command line for Autoware mode passes a Linux path through a Windows shell.
+In PowerShell, a double-quoted `"$HOME/autoware/autoware_map/Town05"` is expanded
+**before** the command reaches WSL, into `C:\Users\<user>/autoware/...` — a path
+that does not exist inside Linux.
+
+Nothing fails at launch. Autoware starts, RViz opens, and there is simply **no
+map**. The symptom only appears minutes later, far from the cause:
+
+```
+localization initialize failed: align server failed.
+AutowareSessionError: localization would not initialize at the scene's ego pose
+```
+
+five attempts in a row, each costing a full CARLA + Autoware restart.
+
+It survived testing because our own launches passed the argument single-quoted,
+so `$HOME` reached WSL intact and expanded correctly there. Only a human typing
+the documented command hit it.
+
+**Rules:** give cross-boundary paths literally (`/home/<user>/...`), never via a
+variable the outer shell may expand. And validate an input at the point it
+enters, not where it is finally used — the runner now checks the map directory
+exists inside WSL before launching Autoware, turning a ten-minute mystery into an
+immediate, self-explaining error.
+
+---
+
+## 18. A documented trap still bites the code written after documenting it
+
+§5 already recorded that `CarlaUE4.exe` is only a launcher that exits at once.
+The recovery path accounted for it. The pipeline's own `shutdown()`, written
+later, did not: it held the launcher's handle, found it already terminated, and
+returned — leaving the real server running after every suite.
+
+The fix was the helper recovery already used (kill by image name). The lesson is
+that a known pitfall must be encoded in **one shared place** the whole codebase
+goes through, not remembered at each call site.
+
+---
+
+## 19. The screen does not show where one attempt ends and the next begins
+
+A CARLA crash popup appeared shortly after a scenario completed successfully,
+and was naturally read as that scenario crashing CARLA.
+
+The log disagreed. The *next* attempt had already connected to CARLA, placed its
+ego, and run a settle wait and three localization retries against it — none of
+which a dead server can do. The crash belonged to that next attempt, during the
+cleanup after it failed (see KNOWN_INSTABILITIES §2.11).
+
+Between successful runs nothing restarts, so the same window and the same ego
+carry straight on with no visual boundary. **When attributing a failure, use the
+log's attempt markers, not the moment it becomes visible.**
+
+The observation still carried a real signal: the successful run *was* involved —
+it left the ego moving, which caused the next attempt to fail. Wrong about which
+run crashed, right that the two were connected.

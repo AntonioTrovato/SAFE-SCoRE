@@ -30,7 +30,7 @@ All Python source lives under `src/`, organized into packages: `src/runner`, `sr
 python -m src.runner.run_experiment --input_dir scenic_example/common --output_folder scenic_demo --num_runs 10
 ```
 
-Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_runs` times each (SOTIF calls for repeated stochastic execution), then runs the SOTIF enrichment pipeline (below) automatically unless `--skip_enrichment` is passed. Two engines, selected via `--engine`:
+Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_runs` times each (SOTIF calls for repeated stochastic execution), then runs the SOTIF enrichment pipeline (below) automatically on the output folder it just produced — never on other folders under `outputs/` — unless `--skip_enrichment` is passed. Two engines, selected via `--engine`:
 - `behavior_agent` (default): connects to a local CARLA server; the ego is driven by whatever `behavior` the `.scenic` file itself compiles in (e.g. `EgoBehavior()`) — Scenic's own driving behaviors are the "agent" here, no separate CARLA `BehaviorAgent` is involved.
 - `autoware`: hands the ego to a running Autoware Universe stack. Ownership is
   split - Autoware owns the map, the ego, its sensors and its control; Scenic
@@ -59,7 +59,17 @@ Setting `SAFE_SCORE_XOSC_CONVERTER` overrides the choice for both engines. Picki
 
 Both converters emit a spawn-height compatibility shim (`_spawn_height_fix()`): Scenic places ground actors at `waypoint.z + 0.5`, which on CARLA 0.9.15 lands inside the generated road mesh and makes `try_spawn_actor()` refuse; the shim retries refused spawns slightly higher (`SPAWN_LIFT_OFFSETS`) without ever altering recorded x/y/heading.
 
-An entity whose recorded peak speed is below `PARKED_SPEED_THRESHOLD` is treated as parked and receives neither a behavior nor a rolename — including the ego. That is faithful to the source recording, but it means a `.xosc` whose ego never moves converts to a scenario whose ego never moves, in either engine.
+**Where motion is read from.** Spawn pose comes from `TeleportAction` in `Init`. Destination (`AcquirePositionAction`) and target speed (`AbsoluteTargetSpeed`) are read from `Init/Private` first and then, for any entity still missing them, from the Storyboard's ManeuverGroups (`_parse_stories`). The Storyboard pass matters because many files — including CARLA's own `scenario_runner` examples — script motion only there; reading `Init` alone makes every entity look motionless.
+
+**Parked entities.** An entity is parked when it has no destination **and** its peak recorded speed is below `PARKED_SPEED_THRESHOLD`. A parked entity receives neither a behavior nor a rolename — including the ego. An entity with a destination is never parked, because goal-scripted scenarios carry no speed data at all. This is faithful to the source, but it means a `.xosc` whose ego has no scripted motion converts to a scenario whose ego never moves in `behavior_agent` mode. That is common in `scenario_runner` files, where the hero is meant to be driven by the system under test.
+
+**Entity classes.** OpenSCENARIO `vehicleCategory` maps to a Scenic class through `XOSCParser.SCENIC_CLASS`: `bicycle` → `Bicycle`, `motorbike` → `Motorcycle`, `pedestrian` → `Pedestrian`, everything else → `Car`. Two-wheelers keep Scenic's own blueprint and default dimensions rather than the source's, because source files routinely pair a two-wheeler category with a car model (one declares `vehicle.audi.tt` for a bicycle); forcing a 4.5 m car footprint onto a bicycle makes it unspawnable wherever a bicycle legitimately sits.
+
+**Known limitations**, shared by both converters:
+- `_parse_stories` collects every `EntityRef` in a ManeuverGroup, including those inside trigger conditions, not only its `<Actors>`. An action can therefore be credited to an entity that merely appears in a condition.
+- A parked ego gets no `rolename 'ego_vehicle'`. Limited impact, since in Autoware mode the runner binds Autoware's own ego actor directly.
+- The spawn-height shim lifts at most `max(SPAWN_LIFT_OFFSETS)` (1.2 m); spawns needing more clearance still fail.
+- A systematic +90° heading offset was measured on CommonRoad-derived scenarios on generated OpenDRIVE maps (all 13 actors of one scenario). The heading code is unchanged since, but this has not been re-tested.
 
 `.scenic` files and everything non-convertible (map files such as `.xodr`/`.snet`, readmes, ...) are never touched or moved, so any relative path a scenario uses to reference them (e.g. `param map = localPath('Town.xodr')`) keeps working unchanged. `run_directory()` then executes every `.scenic` file found under `--input_dir` (hand-written and converted alike) via a plain recursive glob.
 
@@ -68,8 +78,8 @@ An entity whose recorded peak speed is below `PARKED_SPEED_THRESHOLD` is treated
 There is no test suite, linter config, or CI in this repo. The other two entry points:
 
 ```bash
-python -m src.pipeline.run_pipeline    # SOTIF enrichment pipeline (per-dataset), same as run_experiment.py calls automatically
-python -m src.analysis.run_analysis    # Cross-tool research-question (RQ) analyses
+python -m src.pipeline.run_pipeline --output_folder <name>   # SOTIF evaluation of one dataset (--all for every folder)
+python -m src.analysis.run_analysis                        # cross-suite comparison - future work, never run by the pipeline
 ```
 
 ### SOTIF pipeline (`src/pipeline/run_pipeline.py` → `src/pipeline/sotif_pipeline.py`)

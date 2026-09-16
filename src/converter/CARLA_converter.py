@@ -233,8 +233,8 @@ class XOSCParser:
         "van":        "Car",
         "truck":      "Car",
         "bus":        "Car",
-        "bicycle":    "Car",
-        "motorbike":  "Car",
+        "bicycle":    "Bicycle",
+        "motorbike":  "Motorcycle",
         "trailer":    "Car",
         "pedestrian": "Pedestrian",
     }
@@ -964,9 +964,15 @@ class ScenicRulesWriter:
             head = (f"{var} = new {cls} at {var}SpawnPt, "
                     f"facing {var}SpawnPt.heading,{note}")
         self._w(head)
-        if e.blueprint:
+        # A two-wheeler keeps Scenic's own blueprint and default dimensions.
+        # Source files routinely pair vehicleCategory="bicycle" with a car
+        # model (measured: one declares vehicle.audi.tt), and forcing a 4.5 m
+        # car footprint onto a bicycle makes it unspawnable wherever a bicycle
+        # legitimately sits - on a shoulder, or off the carriageway.
+        two_wheeler = cls in ("Bicycle", "Motorcycle")
+        if e.blueprint and not two_wheeler:
             self._w(f"      with blueprint '{e.blueprint}',")
-        if e.length > 0 and e.width > 0 and not e.is_pedestrian:
+        if e.length > 0 and e.width > 0 and not e.is_pedestrian and not two_wheeler:
             self._w(f"      with length {e.length:.2f}, "
                     f"with width {e.width:.2f},")
         self._w("      with regionContainedIn None,")

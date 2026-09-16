@@ -81,9 +81,27 @@ cd ~/autoware && colcon build --packages-select autoware_carla_interface
 
 **Lost on every WSL restart.** Asks for your sudo password.
 
+Paste these **one line at a time** — as a single `&&` chain the terminal can
+split them, silently leaving most unapplied.
+
 ```bash
-sudo ip link set lo multicast on && sudo sysctl -w net.core.rmem_max=2147483647 && sudo sysctl -w net.ipv4.ipfrag_time=3 && sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+sudo ip link set lo multicast on
 ```
+
+```bash
+sudo sysctl -w net.core.rmem_max=2147483647
+```
+
+```bash
+sudo sysctl -w net.ipv4.ipfrag_time=3
+```
+
+```bash
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+```
+
+**Keep this terminal open for the rest of the session** — if every Ubuntu
+terminal closes, the VM stops and these settings are lost.
 
 Verify — if `rmem_max` still reads `212992`, they did not apply:
 

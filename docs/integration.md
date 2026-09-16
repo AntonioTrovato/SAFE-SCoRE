@@ -307,7 +307,7 @@ This is consistent with the pipeline expectation that dataset directories contai
 
 ## Next step
 Once the base logs have been generated, they can be processed through the project pipelines (run from the repository root):
- 1. Run the SOTIF pipeline: `python -m src.pipeline.run_pipeline`
- 2. Run the analysis pipeline: `python -m src.analysis.run_analysis`
+ 1. Run the SOTIF pipeline on your dataset folder: `python -m src.pipeline.run_pipeline --output_folder <name>` (the folder under `outputs/` holding your logs)
+ 2. Optionally, the cross-suite analysis (future work, not part of the SOTIF pipeline): `python -m src.analysis.run_analysis`
 
 If your generator is Scenic-based, consider using `src/runner/` (see the main `README.md`) instead of this manual integration - it already wires up `CarlaBasicLogger`/`ViolationMonitor` for you.

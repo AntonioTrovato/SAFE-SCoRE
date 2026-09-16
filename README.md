@@ -322,14 +322,66 @@ To have SAFE-SCoRE launch, restart and shut down CARLA itself, add:
 
 The ego is driven by Autoware. Scenic still controls the NPCs.
 
-**Step 1.** Nothing needs to be running — SAFE-SCoRE starts CARLA and Autoware
-itself. Make sure neither is already up.
-
-**Step 2.** Run the suite:
+**Step 1 — required, once per WSL session.** Autoware's DDS layer needs kernel
+and network settings that **do not survive a WSL restart**, and applying them
+needs `sudo`, so the pipeline cannot do it for you. In an Ubuntu (WSL) terminal:
 
 ```bash
-python -m src.runner.run_experiment --input_dir scenic_example/suite --output_folder my_run --num_runs 10 --engine autoware --follow_camera behind --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" --carla_launch_args="-prefernvidia -quality-level=Low" --autoware_map_path "$HOME/autoware/autoware_map/Town05"
+sudo ip link set lo multicast on
 ```
+
+```bash
+sudo sysctl -w net.core.rmem_max=2147483647
+```
+
+```bash
+sudo sysctl -w net.ipv4.ipfrag_time=3
+```
+
+```bash
+sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
+```
+
+Check they applied — if `rmem_max` still reads a small number, they did not:
+
+```bash
+sysctl -n net.core.rmem_max && ip link show lo | grep -o MULTICAST
+```
+
+Skip this and Autoware **will not start at all**. The failure is not obvious
+from the runner's log, which reports only `pre-flight: Autoware nodes are
+missing`; launching Autoware by hand shows the real cause:
+
+```
+selected interface "lo" is not multicast-capable: disabling multicast
+[rmw_cyclonedds_cpp]: rmw_create_node: failed to create domain
+[launch]: error creating node: rcl node's rmw handle is invalid
+```
+
+**Leave that Ubuntu terminal open for the whole session.** WSL shuts its VM down
+when you run `wsl --shutdown`, when Windows reboots, **and when you close every
+Ubuntu terminal and leave it idle for a few minutes**. If the VM stops, these
+settings are gone and Autoware stops launching again — so keep one terminal
+open until you are finished.
+
+Paste the four `sysctl` commands **one line at a time**. Pasting them as a
+single `&&` chain can be split across lines by the terminal, which silently
+runs the fragments as separate commands and leaves most settings unapplied.
+
+**Step 2.** Nothing else needs to be running — SAFE-SCoRE starts CARLA and
+Autoware itself. Make sure neither is already up.
+
+**Step 3.** Run the suite:
+
+```bash
+python -m src.runner.run_experiment --input_dir scenic_example/suite --output_folder my_run --num_runs 10 --engine autoware --follow_camera behind --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" --carla_launch_args="-prefernvidia -quality-level=Low" --autoware_map_path /home/<your-linux-user>/autoware/autoware_map/Town05
+```
+
+> **Give `--autoware_map_path` as a literal Linux path.** Writing `"$HOME/..."`
+> in PowerShell expands it to your *Windows* home before it reaches WSL;
+> Autoware then starts with no map and localization fails much later with
+> `align server failed`. The runner checks the path exists inside WSL and stops
+> immediately if it does not.
 
 RViz opens by itself. Before any run, a **pre-flight** check verifies that the
 simulation clock is sane, that no stale ROS nodes remain and that exactly one

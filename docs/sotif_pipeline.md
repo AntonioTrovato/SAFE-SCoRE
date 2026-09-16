@@ -6,11 +6,17 @@ Stage 1 is **generator-agnostic**: it doesn't matter whether the base logs under
 
 ## Running it
 
+You normally never run this by hand: `run_experiment` runs it automatically on the folder it just produced. Run it yourself only to re-evaluate logs you already have — after editing `config/sotif_odd_tc.yaml`, or on logs from another tool.
+
 ```bash
-python -m src.pipeline.run_pipeline
+# one dataset folder - the normal case
+python -m src.pipeline.run_pipeline --output_folder my_run
+
+# every folder under outputs/
+python -m src.pipeline.run_pipeline --all
 ```
 
-This iterates every subfolder found under `outputs/` at the repository root and runs the steps below on each one, independently. A dataset folder is expected to contain `*_log_basic.json` files named `<scenario_id>_run_<NN>_log_basic.json`.
+Exactly one of the two is required. With `--output_folder` only that folder is processed; with `--all` every subfolder of `outputs/` is processed independently, and an empty or foreign folder is skipped with a warning rather than aborting the rest. A dataset folder is expected to contain `*_log_basic.json` files named `<scenario_id>_run_<NN>_log_basic.json`.
 
 ## Steps
 
