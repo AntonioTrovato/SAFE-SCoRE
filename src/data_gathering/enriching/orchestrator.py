@@ -68,17 +68,36 @@ def process_single_file(
         traceback.print_exc()
         return None
 
+# multiprocessing.Pool on Windows waits on its workers with
+# WaitForMultipleObjects, which accepts at most 64 handles; the pool adds a few
+# of its own, so anything above ~60 workers dies with
+#   ValueError: need at most 63 handles, got a sequence of length N
+# Measured on a 128-core workstation, where the default of cpu_count() made
+# STEP 0.5 fail outright. Capping costs nothing: this stage is I/O-bound on one
+# JSON file per run.
+MAX_WORKERS = 60
+
+
+def default_workers() -> int:
+    return max(1, min(cpu_count() or 1, MAX_WORKERS))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Orchestrator: computes all metrics in parallel")
     parser.add_argument("--input_dir", type=Path, required=True, help="Directory containing *_log_basic.json files")
     parser.add_argument("--output_dir", type=Path, required=False, help="Directory to save the enriched JSON files to")
     parser.add_argument("--completion_tolerance", type=float, default=10.0, help="Completion tolerance (meters)")
     parser.add_argument("--stability_threshold", type=float, default=5.0, help="Stability deviation threshold (meters)")
-    parser.add_argument("--workers", type=int, default=cpu_count(), help="Number of parallel worker processes")
+    parser.add_argument("--workers", type=int, default=default_workers(),
+                        help="Number of parallel worker processes")
     args = parser.parse_args()
 
     all_files = list(args.input_dir.glob("**/*_log_basic.json"))
     print(f"Found {len(all_files)} files to process.")
+
+    # Never start more workers than there is work for, and stay inside the
+    # Windows handle limit (see default_workers).
+    workers = max(1, min(args.workers, len(all_files) or 1, MAX_WORKERS))
 
     if args.output_dir:
         args.output_dir.mkdir(parents=True, exist_ok=True)
@@ -91,7 +110,7 @@ def main():
         stability_threshold=args.stability_threshold
     )
 
-    with Pool(processes=args.workers) as pool:
+    with Pool(processes=workers) as pool:
         results = list(tqdm(pool.imap_unordered(process_fn, all_files), total=len(all_files), desc="Processing logs"))
 
     valid = [r for r in results if r]

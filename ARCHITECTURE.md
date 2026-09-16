@@ -4,7 +4,7 @@ This file documents the internal structure, package layout, and key mechanisms o
 
 ## Project overview
 
-SAFE-SCoRE is a SOTIF-aligned (ISO 21448) evaluation framework for comparing automatic scenario generators used to validate ADAS/ADS in the CARLA simulator. `src/runner/run_experiment.py` executes a suite of Scenic (`.scenic`) scenarios directly on CARLA (`src/runner/`) and produces base-log JSON files; the rest of the pipeline (`src/data_gathering/`, `src/pipeline/`, `src/analysis/`) enriches those logs with SOTIF/ODD/hazard/behavioral metrics and runs comparative analyses across generators ("tools"). Logs can also come from an external scenario generator wired in independently (see `docs/integration.md`) — the enrichment/analysis stages don't care which path produced them, as long as the base-log JSON shape matches.
+SAFE-SCoRE is a SOTIF-aligned (ISO 21448) framework for executing a suite of driving scenarios in the CARLA simulator and scoring every execution as safety evidence. The ego can be driven by CARLA's built-in agent or by a real AD stack (Autoware), so a suite can be used to evaluate an actual system under test. `src/runner/run_experiment.py` executes a suite of Scenic (`.scenic`) scenarios directly on CARLA (`src/runner/`) and produces base-log JSON files; the rest of the pipeline (`src/data_gathering/`, `src/pipeline/`, `src/analysis/`) enriches those logs with SOTIF/ODD/hazard/behavioral metrics and produces the suite report. Where the scenarios came from is out of scope; comparing scenario generators is one possible use of the output (`src/analysis/`), not the purpose of the tool. Logs can also come from an external scenario generator wired in independently (see `docs/integration.md`) — the enrichment/analysis stages don't care which path produced them, as long as the base-log JSON shape matches.
 
 The stage separation is fundamental to the codebase: **scenario execution + logging** (`src/runner/` for Scenic/CARLA, or an externally-integrated generator using `src/data_gathering/carlaBasicLogger.py` directly) → **post-execution SOTIF enrichment and analysis** (`src/data_gathering/enriching/`, `src/pipeline/`, `src/analysis/`).
 
@@ -18,9 +18,9 @@ All Python source lives under `src/`, organized into packages: `src/runner`, `sr
   python3.10 -m venv venv
   source venv/bin/activate
   pip install -r requirements.txt
-  pip install scenic  # not pinned in requirements.txt; see README.md
+  # Scenic is installed from source, not from PyPI - see README.md (3.2.0b1)
   ```
-- CARLA (`carla==0.9.16`) is a real pip dependency (`requirements.txt`); there's no vendored CARLA client copy in this repo — a CARLA server must be running separately (locally, or the remote CARLA+Autoware Docker host passed via `--address`/`--port`).
+- CARLA (`carla==0.9.15`) is a real pip dependency (`requirements.txt`); there's no vendored CARLA client copy in this repo — a CARLA server must be running separately (locally, or the remote CARLA+Autoware Docker host passed via `--address`/`--port`).
 - `src/utils/carla_help.py` reads a `CARLA_PATH` environment variable to locate a CARLA installation for helper utilities (starting/stopping `CarlaUE4`).
 - Every entry script inserts both the repo root and `src/` onto `sys.path` at the top (`REPO_ROOT`/`SRC_ROOT` in each of the three `run_*.py` files) — `src/` so bare cross-package imports like `from pipeline.sotif_pipeline import ...` resolve, `REPO_ROOT` for anything path-based (locating `outputs/`, building subprocess script paths). This makes them work both via `python -m src.<pkg>.run_*` and via direct path invocation (`python src/<pkg>/run_*.py`) from the repo root.
 
@@ -48,7 +48,20 @@ Key mechanism (`src/runner/scenic_carla_runner.py` + `src/runner/recorder.py`): 
 
 The runner also snapshots a `world_state` block into each log (raw CARLA weather floats, actor counts, map name, ego speed limit, mission timeout) — this is what the config-driven ODD computation (below) reads instead of a generator-specific scenario-metadata dict.
 
-**Non-`.scenic` input (`_ensure_scenic_twins()` in `scenic_carla_runner.py`).** `run_directory()` scans `--input_dir` recursively before anything else runs, looking for files whose suffix is registered as convertible (`_CONVERTIBLE_SUFFIXES`, currently just `.xosc`). Each one is run through a pluggable converter (`src/converter/CARLA_converter.py:convert_file`, selected via `DEFAULT_XOSC_CONVERTER`/`SAFE_SCORE_XOSC_CONVERTER`, a `"module:function"` spec) and its output is written as a `.scenic` twin right next to it (same name, `.scenic` extension) — in place, overwriting any twin from a previous run so results always reflect the current converter.  Two converters ship with the project and differ only in who drives the ego, not in which CARLA version they support (both convert identically on 0.9.15 and 0.9.16). `converter.CARLA_0915_converter:convert_file` is **the default**: it targets Autoware, spawning the ego at its recorded pose with `rolename 'ego_vehicle'` and **no** Scenic behavior, because Autoware controls it - and Autoware requires CARLA 0.9.15, which is what `requirements.txt` pins. Note that with no Autoware bridge attached the ego spawns and then never moves, so logs from such a run describe a stationary ego and any SOTIF metric derived from them describes a parked vehicle. For ordinary runs with no Autoware in the loop, select `converter.CARLA_converter:convert_file` via `SAFE_SCORE_XOSC_CONVERTER`; it compiles a Scenic driving behavior into the ego so it follows its recorded route. `.scenic` files and everything non-convertible (map files such as `.xodr`/`.snet`, readmes, ...) are never touched or moved, so any relative path a scenario uses to reference them (e.g. `param map = localPath('Town.xodr')`) keeps working unchanged. `run_directory()` then simply executes every `.scenic` file found under `--input_dir` (hand-written and converted alike) via a plain recursive glob.
+**Non-`.scenic` input (`_ensure_scenic_twins()` in `scenic_carla_runner.py`).** `run_directory()` scans `--input_dir` recursively before anything else runs, looking for files whose suffix is registered as convertible (`_CONVERTIBLE_SUFFIXES`, currently just `.xosc`). Each one is converted and written as a `.scenic` twin next to it (same name, `.scenic` extension), overwriting any twin from a previous run so results always reflect the current converter.
+
+Two converters ship with the project, and **which one is used is decided by `--engine`** (`CONVERTER_BY_ENGINE`), because they differ in exactly one respect — who drives the ego:
+
+- `--engine behavior_agent` → `converter.CARLA_converter:convert_file`. The ego carries a compiled Scenic behavior and follows its recorded route.
+- `--engine autoware` → `converter.AUTOWARE_converter:convert_file`. The ego carries no Scenic behavior, only `with rolename 'ego_vehicle'`, because Autoware controls it.
+
+Setting `SAFE_SCORE_XOSC_CONVERTER` overrides the choice for both engines. Picking the wrong one fails silently in the worst way: an Autoware-targeted scenario executed without Autoware spawns the ego and never moves it, so every SOTIF metric derived from that log describes a parked car.
+
+Both converters emit a spawn-height compatibility shim (`_spawn_height_fix()`): Scenic places ground actors at `waypoint.z + 0.5`, which on CARLA 0.9.15 lands inside the generated road mesh and makes `try_spawn_actor()` refuse; the shim retries refused spawns slightly higher (`SPAWN_LIFT_OFFSETS`) without ever altering recorded x/y/heading.
+
+An entity whose recorded peak speed is below `PARKED_SPEED_THRESHOLD` is treated as parked and receives neither a behavior nor a rolename — including the ego. That is faithful to the source recording, but it means a `.xosc` whose ego never moves converts to a scenario whose ego never moves, in either engine.
+
+`.scenic` files and everything non-convertible (map files such as `.xodr`/`.snet`, readmes, ...) are never touched or moved, so any relative path a scenario uses to reference them (e.g. `param map = localPath('Town.xodr')`) keeps working unchanged. `run_directory()` then executes every `.scenic` file found under `--input_dir` (hand-written and converted alike) via a plain recursive glob.
 
 ## Running the enrichment/analysis pipelines
 

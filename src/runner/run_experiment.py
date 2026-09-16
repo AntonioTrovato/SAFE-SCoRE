@@ -175,7 +175,8 @@ def main() -> None:
         runner.summarize()
 
         if not args.skip_enrichment:
-            pipeline = SOTIFPipeline(REPO_ROOT)
+            # Only the folder this run produced - not every previous one.
+            pipeline = SOTIFPipeline(REPO_ROOT, dataset=args.output_folder)
             pipeline.run()
     finally:
         # Only stops CARLA if this run launched it itself via --carla_exe;

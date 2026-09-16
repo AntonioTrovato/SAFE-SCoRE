@@ -2,6 +2,7 @@ import logging
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 class SOTIFPipeline:
@@ -16,11 +17,16 @@ class SOTIFPipeline:
     5. ODD/Triggering-condition coverage and entropy
     """
 
-    def __init__(self, base_dir: Path):
+    def __init__(self, base_dir: Path, dataset: Optional[str] = None):
         self.base_dir = base_dir
 
         # outputs directory (the dynamic source of input data, and where results are written)
         self.outputs_dir = base_dir / "outputs"
+
+        # Restrict the run to a single dataset folder under outputs/. A run
+        # should evaluate what it just produced, not silently re-process every
+        # previous result folder as well.
+        self.dataset = dataset
 
         # existing enrichment/analysis scripts
         self.step0_orchestrator_script = base_dir / "src" / "data_gathering" / "enriching" / "orchestrator.py"
@@ -73,6 +79,13 @@ class SOTIFPipeline:
         if not self.outputs_dir.exists():
             raise FileNotFoundError(f"outputs folder not found: {self.outputs_dir}")
 
+        if self.dataset is not None:
+            target = self.outputs_dir / self.dataset
+            if not target.is_dir():
+                raise FileNotFoundError(f"dataset folder not found: {target}")
+            self.logger.info(f"Evaluating dataset: {target}")
+            return [target]
+
         folders = [p for p in self.outputs_dir.iterdir() if p.is_dir()]
         if not folders:
             raise RuntimeError(f"No subfolders found in {self.outputs_dir}")
@@ -93,7 +106,8 @@ class SOTIFPipeline:
         # logs = list(dataset_dir.rglob("*_log_basic.json"))
 
         if not logs:
-            raise RuntimeError(f"No base logs found in {dataset_dir}. Pipeline aborted for this dataset.")
+            self.logger.warning(f"No base logs in {dataset_dir.name} - skipping it.")
+            return []
 
         self.logger.info(f"Found {len(logs)} base logs in {dataset_dir.name}.")
         return logs
@@ -184,10 +198,16 @@ class SOTIFPipeline:
         self.logger.info("===== STARTING SOTIF PIPELINE (MULTI-DATASET) =====")
 
         dataset_folders = self.list_dataset_folders()
+        processed = 0
 
         for dataset_dir in dataset_folders:
             self.logger.info(f"\n===== DATASET: {dataset_dir.name} =====")
-            self.check_logs(dataset_dir)
+            # An empty or foreign folder under outputs/ is not a failure - it
+            # is simply not a dataset. Skip it rather than abandoning the
+            # datasets that come after it.
+            if not self.check_logs(dataset_dir):
+                continue
+            processed += 1
             self.compute_enriched_metrics(dataset_dir)
             self.compute_odd(dataset_dir)
             self.compute_hazard(dataset_dir)
@@ -195,4 +215,5 @@ class SOTIFPipeline:
             self.compute_odd_tc_coverage(dataset_dir)
 
         self.logger.info("\n===== SOTIF PIPELINE COMPLETE =====")
+        self.logger.info(f"Processed {processed} dataset(s) of {len(dataset_folders)} folder(s) found.")
         self.logger.info(f"Final outputs available in: {self.outputs_dir}")

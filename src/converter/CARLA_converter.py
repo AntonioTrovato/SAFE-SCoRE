@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 
-
 import argparse
 import math
 import os
@@ -549,25 +548,12 @@ class ScenicRulesWriter:
             self._w(f"SOURCE HEADER: {s.description}")
         self._w(f"ENTITIES: ego + {moving} moving NPC(s), {parked} parked, "
                 f"{peds} pedestrian(s)")
-        self._w("TARGET: Autoware. The ego is spawned at its recorded pose but "
-                "carries NO")
-        self._w("        Scenic behavior - Autoware owns its control. Moving NPCs "
-                "still drive")
-        self._w("        their recorded routes under Scenic.")
-        if s.ego is not None and s.ego.spawn is not None:
-            sp = s.ego.spawn
-            yaw = math.degrees(sp.heading_rad)
-            self._w("")
-            self._w("AUTOWARE spawn_point (x, y, z, roll, pitch, yaw) - copy into "
-                    "the bridge config")
-            self._w("so Autoware starts the ego at the recorded pose rather than "
-                    "its own default:")
-            self._w(f"    [{sp.x:.4f}, {sp.y:.4f}, 0.0, 0.0, 0.0, {yaw:.4f}]")
-            if s.ego.goal is not None:
-                g = s.ego.goal
-                self._w("AUTOWARE goal pose (x, y, yaw):")
-                self._w(f"    [{g.x:.4f}, {g.y:.4f}, "
-                        f"{math.degrees(g.heading_rad):.4f}]")
+        self._w("NOTE: placement is the exact recorded data (positions, "
+                "headings, speeds);")
+        self._w("      moving NPCs drive their recorded routes, the ego "
+                "drives toward its")
+        self._w("      recorded destination. Triggers and rule recording "
+                "come in later steps.")
         self._w('"""')
         self._w()
 
@@ -670,8 +656,11 @@ class ScenicRulesWriter:
         ego = self.s.ego
         if ego is not None:
             self._w()
-            self._w("# Autoware target: no Scenic braking parameters - the "
-                    "ego is driven by Autoware.")
+            self._w("# Converter-added driving parameters (no equivalent "
+                    "in the recording)")
+            self._w(f"EGO_SAFETY_DIST = {EGO_SAFETY_DIST:.0f}  "
+                    "# m, ego brakes for objects ahead in its own lane")
+            self._w(f"EGO_BRAKE = {EGO_BRAKE}")
             if ego.goal is not None:
                 self._w(f"EGO_GOAL_RADIUS = {GOAL_RADIUS:.0f}  "
                         "# m, counts as arrival at the destination")
@@ -880,7 +869,7 @@ class ScenicRulesWriter:
         self._banner("AGENT BEHAVIORS")
         ego = self.s.ego
 
-        if False:  # Autoware target: no ego behavior is generated.
+        if ego is not None and ego.spawn is not None:
             has_route = (self._has_vehicle_route(ego)
                          or ego.goal is not None)
             self._w("behavior EgoBehavior():")
@@ -985,23 +974,16 @@ class ScenicRulesWriter:
             self._w("      with allowCollisions True")
         else:
             self._w("      with allowCollisions True,")
-            if self._has_initial_speed(e) and not e.is_ego:
+            if self._has_initial_speed(e):
                 # Not `with speed`: CARLA cannot spawn an actor already in
                 # motion, and Scenic's CARLA interface raises on a nonzero
                 # initial speed. The recorded value is carried as a custom
                 # property and applied by the behavior's first action.
                 self._w(f"      with initialSpeed {e.init_speed:.4f},  "
                         f"# recorded initial speed (m/s)")
-            if e.is_ego:
-                # Autoware target: the ego carries no Scenic behavior. It is
-                # spawned here so the recorded start pose is preserved and the
-                # SAFE-SCoRE recorder still has an `ego` to log, but all
-                # control belongs to Autoware.
-                self._w("      with rolename 'ego_vehicle'  "
-                        "# Autoware drives this actor; no Scenic behavior")
-            else:
-                bname = f"{safe_name(e.name).capitalize()}Behavior"
-                self._w(f"      with behavior {bname}()")
+            bname = ("EgoBehavior" if e.is_ego
+                     else f"{safe_name(e.name).capitalize()}Behavior")
+            self._w(f"      with behavior {bname}()")
         self._w()
 
     def _real_time_pacing(self):

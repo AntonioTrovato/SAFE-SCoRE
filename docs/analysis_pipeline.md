@@ -1,6 +1,12 @@
 # Analysis Pipeline
 
-This document describes `src/analysis/`, which consumes the CSVs produced by the SOTIF pipeline (`docs/sotif_pipeline.md`) across one or more dataset folders and runs comparative, cross-tool research-question (RQ) analyses. This is a distinct, later stage from Stage 1 enrichment: Stage 1 produces per-dataset metrics; `src/analysis/` compares those metrics *across* datasets/tools.
+> **Optional.** Nothing here is part of the SAFE-SCoRE pipeline. Executing a
+> suite and producing its SOTIF report never touches `src/analysis/`, and
+> `src/runner/` never invokes it.
+
+This document describes `src/analysis/`, a separate offline stage that consumes the CSVs produced by the SOTIF pipeline (`docs/sotif_pipeline.md`) across one or more dataset folders and runs comparative research-question (RQ) analyses — for instance comparing suites produced by different scenario generators. The SOTIF pipeline produces per-dataset metrics; `src/analysis/` compares those metrics *across* datasets.
+
+It is the only part of the project that needs `umap-learn`.
 
 ## Entry point
 

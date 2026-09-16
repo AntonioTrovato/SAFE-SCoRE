@@ -186,10 +186,6 @@ cameras**, independent of resolution - four at 1600x900 are fine, five at
 640x360 are not. `carla_sensor_kit` enables six, so `enabled_sensors` in the
 bridge's `config/sensor_mapping.yaml` must be trimmed.
 
-Consequence for results: with cameras reduced, **traffic-light recognition is
-degraded**, so `red_light` hazard counts in Autoware mode should not be trusted
-without checking. Town01 runs all six at full resolution.
-
 Separately, CARLA on Town05 with Autoware attached is simply unstable -
 observed uptimes ranged from 80 s to 53 minutes, median around 9 minutes. Long
 suites need the automatic recovery.

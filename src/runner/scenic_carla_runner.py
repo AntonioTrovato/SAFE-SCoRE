@@ -237,31 +237,29 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 
 # Which converter turns a .xosc into a .scenic, as "module:function".
 #
-# The function must take (input_path, output_path) as strings and return
-# the path it actually wrote. Swap converters either by editing this
-# default or, without touching the code, by setting the environment
-# variable - handy for A/B-ing two converters over the same input:
+# The function takes (input_path, output_path) as strings and returns the
+# path it actually wrote.
 #
-#   converter.AUTOWARE_converter:convert_file     (default - Autoware target)
-#       The ego is spawned at its recorded pose with rolename 'ego_vehicle'
-#       and NO Scenic behavior, because Autoware controls it. This is the
-#       project default because Autoware is the target SUT, and Autoware
-#       requires CARLA 0.9.15 (see requirements.txt).
+# Which converter to use is decided by --engine, because the two differ in
+# exactly one respect: who drives the ego.
 #
-#       NOTE: with no Autoware bridge attached, the ego spawns and then
-#       never moves. That is correct for this target, but it means the
-#       resulting logs describe a stationary ego, and any SOTIF metric
-#       derived from them describes a parked vehicle - not a driving one.
-#       Use the converter below if you want Scenic to drive the ego.
+#   behavior_agent -> converter.CARLA_converter     ego carries a compiled
+#                                                   Scenic behavior and follows
+#                                                   its recorded route
+#   autoware       -> converter.AUTOWARE_converter  ego carries NO behavior and
+#                                                   only rolename 'ego_vehicle',
+#                                                   because Autoware drives it
 #
-#   converter.CARLA_converter:convert_file        (Scenic-driven ego)
-#       The ego is driven by Scenic's own compiled behavior: it follows its
-#       recorded route, and the logs describe a moving vehicle. Use this for
-#       ordinary SAFE-SCoRE runs with no Autoware in the loop:
+# Picking the wrong one fails silently in the worst way: an Autoware-targeted
+# scenario run without Autoware spawns the ego and never moves it, so every
+# SOTIF metric derived from that log describes a parked car.
 #
-#           SAFE_SCORE_XOSC_CONVERTER=converter.CARLA_converter:convert_file
-#
-DEFAULT_XOSC_CONVERTER = "converter.AUTOWARE_converter:convert_file"
+# SAFE_SCORE_XOSC_CONVERTER overrides the choice for both engines.
+CONVERTER_BY_ENGINE = {
+    "behavior_agent": "converter.CARLA_converter:convert_file",
+    "autoware": "converter.AUTOWARE_converter:convert_file",
+}
+DEFAULT_XOSC_CONVERTER = CONVERTER_BY_ENGINE["autoware"]
 
 
 def resolve_converter(spec: Optional[str] = None):
@@ -278,7 +276,7 @@ def resolve_converter(spec: Optional[str] = None):
     return getattr(module, func_name), spec
 
 
-def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
+def _convert_to_scenic(src: Path, dest: Path, engine: Optional[str] = None) -> Optional[Path]:
     """
     Read `src` (a non-.scenic scenario file) and write an equivalent
     .scenic file at `dest`. Returns the written path on success, or None
@@ -295,7 +293,7 @@ def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
         return None
 
     try:
-        convert_file, spec = resolve_converter()
+        convert_file, spec = resolve_converter(CONVERTER_BY_ENGINE.get(engine))
     except Exception:
         log.error("Could not load converter; cannot convert %s:\n%s",
                   src, traceback.format_exc())
@@ -316,7 +314,7 @@ def _convert_to_scenic(src: Path, dest: Path) -> Optional[Path]:
     return Path(written)
 
 
-def _ensure_scenic_twins(input_dir: Path) -> None:
+def _ensure_scenic_twins(input_dir: Path, engine: Optional[str] = None) -> None:
     """
     Ensures every convertible scenario file (see _CONVERTIBLE_SUFFIXES, e.g.
     .xosc) found recursively under input_dir has an up-to-date .scenic twin
@@ -339,14 +337,16 @@ def _ensure_scenic_twins(input_dir: Path) -> None:
     if not convertible_files:
         return
 
+    _, spec = resolve_converter(CONVERTER_BY_ENGINE.get(engine))
     log.info(
-        "Found %d convertible non-.scenic file(s) in %s; writing .scenic twins in place.",
-        len(convertible_files), input_dir,
+        "Found %d convertible non-.scenic file(s) in %s; writing .scenic twins "
+        "in place using %s.",
+        len(convertible_files), input_dir, spec,
     )
 
     for src in convertible_files:
         dest = src.with_suffix(".scenic")
-        converted_path = _convert_to_scenic(src, dest)
+        converted_path = _convert_to_scenic(src, dest, engine)
         if converted_path is None:
             log.warning("Could not convert %s - skipping.", src)
 
@@ -1347,7 +1347,7 @@ class ScenicCarlaRunner:
 
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:
         input_dir = Path(input_dir)
-        _ensure_scenic_twins(input_dir)
+        _ensure_scenic_twins(input_dir, self.engine)
         scenic_files = sorted(input_dir.rglob("*.scenic"))
         if not scenic_files:
             raise FileNotFoundError(f"No .scenic file found in {input_dir}")
