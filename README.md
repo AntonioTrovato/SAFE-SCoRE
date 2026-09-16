@@ -135,8 +135,8 @@ only to drive the ego with a real AD stack.
 ## Part 1 — CARLA, Autoware and the bridge
 
 Follow the guide in the
-[**univaq-avv-carla-autoware**](https://github.com/univaq-avv/univaq-avv-carla-autoware)
-repository, which covers installing CARLA, Autoware and the
+[**univaq-avv-carla-autoware**](https://github.com/CarlinoCalogero/univaq-avv-carla-autoware)
+repository **until Step 10 "Run"**, which covers installing CARLA, Autoware and the
 `autoware_carla_interface` bridge.
 
 Four things that guide does not cover, and that you will need:
