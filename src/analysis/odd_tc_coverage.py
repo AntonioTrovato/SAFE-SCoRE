@@ -24,11 +24,13 @@ restricted to scenarios flagged is_non_acceptable in
 
 Because ODD/TC are computed per *run* by compute_sotif_odd.py (10 runs per
 scenario), this module first aggregates to one annotation per scenario_id:
-the ODD categorical values from its first run (scenario-design properties
-that shouldn't vary meaningfully across repeated stochastic runs in this
-corpus), and the union of triggering conditions fired across all its runs
-(a scenario "contains" a triggering condition if at least one of its runs
-exhibited it).
+the union of the ODD categorical values observed across all its runs, and
+the union of triggering conditions fired across all its runs (a scenario
+"contains" a value or a triggering condition if at least one of its runs
+exhibited it). The union matters because a stochastic scenario (e.g. a Scenic
+program re-sampled at every run) can land in different ODD values from one
+run to the next. Consequently a scenario can count towards several values of
+the same factor.
 """
 
 from __future__ import annotations
@@ -63,7 +65,7 @@ def _shannon_entropy_norm(counts: Dict[str, int], universe_size: int) -> float:
 @dataclass
 class ScenarioAnnotation:
     scenario_id: str
-    odd_values: Dict[str, str]
+    odd_values: Dict[str, Set[str]]
     triggering_conditions: List[str]
     is_non_acceptable: bool
 
@@ -89,20 +91,20 @@ def _load_scenario_annotations(dataset_dir: Path, non_acceptable_ids: Set[str]) 
 
     annotations = []
     for scenario_id, run_files in grouped.items():
-        odd_values: Dict[str, str] = {}
+        odd_values: Dict[str, Set[str]] = defaultdict(set)
         tcs_union: Set[str] = set()
-        for i, path in enumerate(sorted(run_files)):
+        for path in sorted(run_files):
             with path.open() as fh:
                 data = json.load(fh)
             sotif = data.get("sotif", {}) or {}
-            if i == 0:
-                odd_values = sotif.get("odd_values", {}) or {}
+            for factor, value in (sotif.get("odd_values", {}) or {}).items():
+                odd_values[factor].add(value)
             tcs_union.update(sotif.get("triggering_conditions", []) or [])
 
         annotations.append(
             ScenarioAnnotation(
                 scenario_id=scenario_id,
-                odd_values=odd_values,
+                odd_values=dict(odd_values),
                 triggering_conditions=sorted(tcs_union),
                 is_non_acceptable=scenario_id in non_acceptable_ids,
             )
@@ -121,9 +123,9 @@ def _compute_rows(annotations: List[ScenarioAnnotation], odd_factors_cfg, tc_def
 
         counts: Dict[str, int] = defaultdict(int)
         for ann in annotations:
-            v = ann.odd_values.get(name)
-            if v in declared_values:
-                counts[v] += 1
+            for v in ann.odd_values.get(name, ()):
+                if v in declared_values:
+                    counts[v] += 1
 
         coverage = (len(counts) / universe_size) if universe_size else 0.0
         entropy_norm = _shannon_entropy_norm(counts, universe_size)
