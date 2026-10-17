@@ -5,36 +5,7 @@ import argparse
 from pathlib import Path
 from typing import Dict, Any, List
 
-from sotif_config import load_config, get_acceptance_threshold
-
-# ---------------------------------------------------------------------
-# Hazards considered (consistent with the base logs)
-# ---------------------------------------------------------------------
-HAZARDS = [
-    "collision_vehicle",
-    "collision_pedestrian",
-    "collision_static",
-    "red_light",
-    "stop_sign",
-    "off_road",
-    "lane_invasion",
-]
-
-# ---------------------------------------------------------------------
-# Severity weights (CARLA Leaderboard + minimal extension)
-# ---------------------------------------------------------------------
-SEVERITY_WEIGHTS = {
-    # CARLA Leaderboard
-    "collision_pedestrian": 0.50,
-    "collision_vehicle": 0.60,
-    "collision_static": 0.65,
-    "red_light": 0.70,
-    "stop_sign": 0.80,
-
-    # Minimal, motivated extension
-    "off_road": 0.90,
-    "lane_invasion": 0.85,
-}
+from sotif_config import load_config, get_acceptance_thresholds, get_hazard_severities
 
 # ---------------------------------------------------------------------
 # Filename parsing
@@ -53,10 +24,10 @@ def parse_filename(path: Path):
 # ---------------------------------------------------------------------
 # Extracts the hazard counts from a base log
 # ---------------------------------------------------------------------
-def extract_hazard_counts(data: Dict[str, Any]) -> Dict[str, int]:
+def extract_hazard_counts(data: Dict[str, Any], hazards: List[str]) -> Dict[str, int]:
     results = data.get("results", {})
     counts = results.get("event_counts", {})
-    return {h: int(counts.get(h, 0)) for h in HAZARDS}
+    return {h: int(counts.get(h, 0)) for h in hazards}
 
 
 # ---------------------------------------------------------------------
@@ -76,7 +47,12 @@ def main():
     if not dataset_dir.exists():
         raise FileNotFoundError(f"Dataset dir not found: {dataset_dir}")
 
-    acceptance_threshold = get_acceptance_threshold(load_config(Path(args.config) if args.config else None))
+    config = load_config(Path(args.config) if args.config else None)
+    # hazards and their severities are declared in the config (hazards.severity)
+    SEVERITY_WEIGHTS = get_hazard_severities(config)
+    HAZARDS = list(SEVERITY_WEIGHTS)
+    # one acceptance threshold per hazard (hazards.acceptance_threshold)
+    ACCEPTANCE_THRESHOLDS = get_acceptance_thresholds(config)
 
     dataset_name = dataset_dir.name
 
@@ -115,7 +91,8 @@ def main():
         header.append(f"S_{h}")
     for h in HAZARDS:
         header.append(f"R_{h}")
-    header.append("acceptance_threshold")
+    for h in HAZARDS:
+        header.append(f"acceptance_threshold_{h}")
     header.append("is_non_acceptable")
 
     rows = []
@@ -133,7 +110,7 @@ def main():
             with p.open() as f:
                 data = json.load(f)
 
-            counts = extract_hazard_counts(data)
+            counts = extract_hazard_counts(data, HAZARDS)
 
             for h in HAZARDS:
                 if counts[h] > 0:
@@ -148,7 +125,7 @@ def main():
         # residual risk
         R = {h: P[h] * S[h] for h in HAZARDS}
 
-        is_non_acceptable = any(R[h] > acceptance_threshold for h in HAZARDS)
+        is_non_acceptable = any(R[h] > ACCEPTANCE_THRESHOLDS[h] for h in HAZARDS)
 
         row = [scenario_id, N]
         for h in HAZARDS:
@@ -157,7 +134,8 @@ def main():
             row.append(S[h])
         for h in HAZARDS:
             row.append(round(R[h], 4))
-        row.append(acceptance_threshold)
+        for h in HAZARDS:
+            row.append(ACCEPTANCE_THRESHOLDS[h])
         row.append(is_non_acceptable)
 
         rows.append(row)

@@ -10,11 +10,34 @@
 # ---------------------------------------------------------------------------
 # Hazard acceptance
 # ---------------------------------------------------------------------------
-# A scenario is "non-acceptable" if, for at least one of the 7 hazards
-# computed by compute_sotif_hazard.py, the residual risk R_h = P_h * S_h
-# exceeds this threshold.
+# A scenario is "non-acceptable" if, for at least one hazard computed by
+# compute_sotif_hazard.py, the residual risk R_h = P_h * S_h exceeds that
+# hazard's own acceptance threshold (hazards.acceptance_threshold.<hazard>).
+# Every hazard declared under hazards.severity needs a threshold in [0, 1].
 hazards:
-  acceptance_threshold: 0.2
+  acceptance_threshold:
+    collision_pedestrian: 0.2
+    collision_vehicle: 0.2
+    collision_static: 0.2
+    red_light: 0.2
+    stop_sign: 0.2
+    off_road: 0.2
+    lane_invasion: 0.2
+
+  # Hazards evaluated by the pipeline, with their fixed severity S_h in [0, 1]
+  # (CARLA Leaderboard weights + minimal extension). The key is the hazard
+  # name: it must match a counter in the base log's results.event_counts.
+  # To add a hazard, implement a detector that increments that counter
+  # (see data_gathering/carlaBasicLogger.py), then declare it here.
+  # Order here is the column order of SOTIF_Final.csv and the leaderboard.
+  severity:
+    collision_pedestrian: 0.50
+    collision_vehicle: 0.60
+    collision_static: 0.65
+    red_light: 0.70
+    stop_sign: 0.80
+    off_road: 0.90
+    lane_invasion: 0.85
 
 # ---------------------------------------------------------------------------
 # ODD factors

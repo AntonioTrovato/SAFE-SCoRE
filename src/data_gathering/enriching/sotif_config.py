@@ -25,8 +25,48 @@ def load_config(path: Optional[Path] = None) -> Dict[str, Any]:
         return yaml.safe_load(f) or {}
 
 
-def get_acceptance_threshold(config: Dict[str, Any], default: float = 0.2) -> float:
-    return float(config.get("hazards", {}).get("acceptance_threshold", default))
+def get_acceptance_thresholds(config: Dict[str, Any]) -> Dict[str, float]:
+    """{hazard_name: threshold} from hazards.acceptance_threshold.
+
+    Must cover exactly the hazards declared in hazards.severity, each in [0, 1].
+    """
+    raw = config.get("hazards", {}).get("acceptance_threshold")
+    if not isinstance(raw, dict) or not raw:
+        raise ValueError("config: 'hazards.acceptance_threshold' must be a mapping of hazard name -> threshold")
+    hazards = list(get_hazard_severities(config))
+    missing = [h for h in hazards if h not in raw]
+    unknown = [h for h in raw if h not in hazards]
+    if missing:
+        raise ValueError(f"config: hazards.acceptance_threshold is missing hazards: {missing}")
+    if unknown:
+        raise ValueError(f"config: hazards.acceptance_threshold has hazards not in hazards.severity: {unknown}")
+    thresholds: Dict[str, float] = {}
+    for h in hazards:
+        try:
+            t = float(raw[h])
+        except (TypeError, ValueError):
+            raise ValueError(f"config: acceptance threshold of hazard '{h}' is not a number: {raw[h]!r}")
+        if not 0.0 <= t <= 1.0:
+            raise ValueError(f"config: acceptance threshold of hazard '{h}' must be in [0, 1], got {t}")
+        thresholds[h] = t
+    return thresholds
+
+
+def get_hazard_severities(config: Dict[str, Any]) -> Dict[str, float]:
+    """Ordered {hazard_name: severity} from hazards.severity in the config."""
+    raw = config.get("hazards", {}).get("severity")
+    if not isinstance(raw, dict) or not raw:
+        raise ValueError("config: 'hazards.severity' must be a non-empty mapping of hazard name -> severity")
+    severities: Dict[str, float] = {}
+    for name, value in raw.items():
+        try:
+            s = float(value)
+        except (TypeError, ValueError):
+            raise ValueError(f"config: severity of hazard '{name}' is not a number: {value!r}")
+        if not 0.0 <= s <= 1.0:
+            raise ValueError(f"config: severity of hazard '{name}' must be in [0, 1], got {s}")
+        severities[str(name)] = s
+    return severities
 
 
 def resolve_field(context: Dict[str, Any], dotted_path: str) -> Any:

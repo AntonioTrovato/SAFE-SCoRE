@@ -36,4 +36,4 @@ Computed by `src/data_gathering/enriching/compute_sotif_odd.py`, entirely driven
 
 **Editing the ODD/TC taxonomy** for a different SUT means editing `config/sotif_odd_tc.yaml` only - no Python changes required, as long as the new factors/conditions reference fields already present in `world_state`/`derived`/`metrics`. Adding a genuinely new *derived* field (e.g. a new bucket not yet computed) requires a small addition to `compute_derived_fields()`.
 
-The acceptance threshold used by hazard/risk computation (`hazards.acceptance_threshold`, default `0.2`) also lives in this same config file.
+The hazards, their severities (`hazards.severity`) and one acceptance threshold per hazard (`hazards.acceptance_threshold.<hazard>`, each in [0, 1], default `0.2`) also live in this same config file.

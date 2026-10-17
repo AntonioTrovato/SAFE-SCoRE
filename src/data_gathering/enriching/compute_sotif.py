@@ -3,33 +3,9 @@ import json
 import re
 import argparse
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 
-# ---------------------------------------------------------------------
-# Hazards considered (aligned with the Leaderboard + the actual pipeline)
-# ---------------------------------------------------------------------
-HAZARDS = [
-    "collision_pedestrian",
-    "collision_vehicle",
-    "collision_static",
-    "red_light",
-    "stop_sign",
-    "off_road",
-    "lane_invasion",
-]
-
-# ---------------------------------------------------------------------
-# Standard severity weights (CARLA Leaderboard + minimal extension)
-# ---------------------------------------------------------------------
-SEVERITY_WEIGHTS = {
-    "collision_pedestrian": 0.50,
-    "collision_vehicle": 0.60,
-    "collision_static": 0.65,
-    "red_light": 0.70,
-    "stop_sign": 0.80,
-    "off_road": 0.90,
-    "lane_invasion": 0.85,
-}
+from sotif_config import load_config, get_hazard_severities
 
 # Threshold (meters) below which the route is considered completed
 COMPLETION_THRESHOLD_M = 8.0
@@ -49,10 +25,10 @@ def parse_filename(path: Path):
 # ---------------------------------------------------------------------
 # Extracts event_counts from a base log
 # ---------------------------------------------------------------------
-def extract_event_counts(data: Dict[str, Any]) -> Dict[str, int]:
+def extract_event_counts(data: Dict[str, Any], hazards: List[str]) -> Dict[str, int]:
     results = data.get("results", {})
     counts = results.get("event_counts", {})
-    return {h: int(counts.get(h, 0)) for h in HAZARDS}
+    return {h: int(counts.get(h, 0)) for h in hazards}
 
 
 def _euclidean_2d(a, b) -> float:
@@ -110,7 +86,12 @@ def main() -> None:
         required=True,
         help="Path to the dataset folder to analyze"
     )
+    parser.add_argument("--config", default=None, help="Path to config/sotif_odd_tc.yaml (default: repo config)")
     args = parser.parse_args()
+
+    # hazards and their severities are declared in the config (hazards.severity)
+    SEVERITY_WEIGHTS = get_hazard_severities(load_config(Path(args.config) if args.config else None))
+    HAZARDS = list(SEVERITY_WEIGHTS)
 
     dataset_dir = Path(args.dataset_dir).resolve()
     if not dataset_dir.exists():
@@ -186,7 +167,7 @@ def main() -> None:
                 data = json.load(f)
 
             # hazard occurrence (at least once in the run)
-            counts = extract_event_counts(data)
+            counts = extract_event_counts(data, HAZARDS)
             for h in HAZARDS:
                 if counts[h] > 0:
                     hazard_run_counts[h] += 1
