@@ -114,6 +114,39 @@ hardcoded** — they are declared in
 at a different system under test means editing that file, not the code. See
 [docs/enrichment.md](docs/enrichment.md).
 
+### Adding a new hazard
+
+A hazard is evaluated as soon as it is declared in the YAML *and* counted in the
+base log. Both are needed:
+
+1. **Declare it in [`config/sotif_odd_tc.yaml`](config/sotif_odd_tc.yaml)**,
+   under the same name in both mappings, each value in [0, 1]. The pipeline
+   rejects a config where the two do not list exactly the same hazards.
+
+   ```yaml
+   hazards:
+     acceptance_threshold:
+       harsh_braking: 0.2
+     severity:
+       harsh_braking: 0.55
+   ```
+
+2. **Count it in the log.** The pipeline reads the hazard from
+   `results.event_counts.<name>` in each base log, and treats a run as affected
+   when that counter is greater than 0. In `src/data_gathering/`:
+   - add a detector, normally a `check_<name>(frame, timestamp)` method in
+     `violationMonitor.py`, called from its `tick()`;
+   - add a `log_<name>(...)` method in `carlaBasicLogger.py` that increments
+     `results.event_counts["<name>"]` and, optionally, appends the details
+     (frame, timestamp, context) to `events["<name>"]`;
+   - initialise the counter to 0 in the logger's `event_counts` (next to the
+     existing `setdefault(...)` calls), so every log contains the key. A log
+     without the key is read as 0 occurrences, so a typo in the name makes the
+     hazard silently never fire.
+
+The column set of `SOTIF_Final.csv` and `sotif_hazard_leaderboard.csv` follows
+the YAML, so no further code change is needed.
+
 ---
 
 ## Requirements
@@ -459,6 +492,23 @@ outputs/my_run/
 ```
 
 The log schema is documented in [docs/base_log_json.md](docs/base_log_json.md).
+
+With `--engine autoware`, the ROS 2 logs of Autoware are kept too, under
+`outputs/<output_folder>/autoware_logs/`:
+
+```
+autoware_logs/
+  launch_<timestamp>/    ROS 2 node and launch logs of one Autoware launch
+  runs_index.csv         one row per run attempt: scenario, run, attempt,
+                         autoware_launch_id, start/end time, base_log_written
+```
+
+One Autoware launch serves many runs and is only restarted after a failure, so
+`runs_index.csv` tells you which launch folder holds the logs of a given run.
+Logs are written inside WSL (`~/safe_score_ros_logs/`) and copied to the output
+folder when that Autoware launch is stopped, so they are complete only after the
+suite ends. Copying is best effort: a failure prints a warning and never
+affects the campaign. The evaluation ignores this folder.
 
 ---
 
