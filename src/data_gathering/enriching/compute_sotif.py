@@ -1,5 +1,6 @@
 import csv
 import json
+import math
 import re
 import argparse
 from pathlib import Path
@@ -29,6 +30,30 @@ def extract_event_counts(data: Dict[str, Any], hazards: List[str]) -> Dict[str, 
     results = data.get("results", {})
     counts = results.get("event_counts", {})
     return {h: int(counts.get(h, 0)) for h in hazards}
+
+
+# Statistics reported for the per-run execution time of each scenario.
+EXEC_TIME_STATS = ["T_exec_avg", "T_exec_median", "T_exec_min", "T_exec_max",
+                   "T_exec_p90", "T_exec_p95", "T_exec_p99"]
+
+
+def _percentile(sorted_vals, q: float) -> float:
+    """q-th percentile (0-100) of an ascending list, linear interpolation
+    (same as numpy.percentile's default)."""
+    k = (len(sorted_vals) - 1) * q / 100.0
+    lo, hi = math.floor(k), math.ceil(k)
+    return sorted_vals[lo] + (sorted_vals[hi] - sorted_vals[lo]) * (k - lo)
+
+
+def exec_time_stats(times) -> list:
+    """[avg, median, min, max, p90, p95, p99] of the valid execution times,
+    rounded; empty strings if there is none."""
+    if not times:
+        return [""] * len(EXEC_TIME_STATS)
+    v = sorted(times)
+    vals = [sum(v) / len(v), _percentile(v, 50), v[0], v[-1],
+            _percentile(v, 90), _percentile(v, 95), _percentile(v, 99)]
+    return [round(x, 4) for x in vals]
 
 
 def _euclidean_2d(a, b) -> float:
@@ -145,7 +170,7 @@ def main() -> None:
     header.extend([
         "HR_avg",
         "R_avg",
-        "T_exec_avg",
+        *EXEC_TIME_STATS,
         "completed_runs",
         "completion_rate",
     ])
@@ -159,7 +184,7 @@ def main() -> None:
         N = len(runs)
 
         hazard_run_counts = {h: 0 for h in HAZARDS}
-        runtime_sum = 0.0
+        exec_times = []
         completed_runs = 0
 
         for p in runs:
@@ -174,7 +199,16 @@ def main() -> None:
 
             # actual (wall-clock) execution time
             results = data.get("results", {})
-            runtime_sum += float(results.get("total_simulation_time", 0.0))
+            # a run without a valid execution time is left out of the time
+            # statistics (it still counts for hazards and completion)
+            try:
+                t = float(results.get("total_simulation_time"))
+            except (TypeError, ValueError):
+                t = float("nan")
+            if math.isfinite(t):
+                exec_times.append(t)
+            else:
+                print(f"[WARN] {p.name}: no valid total_simulation_time, excluded from execution-time statistics")
 
             # route completed?
             if is_route_completed(data, threshold_m=COMPLETION_THRESHOLD_M):
@@ -192,7 +226,6 @@ def main() -> None:
         # aggregates
         HR_avg = sum(HR[h] for h in HAZARDS) / len(HAZARDS)
         R_avg = sum(R[h] for h in HAZARDS) / len(HAZARDS)
-        T_exec_avg = runtime_sum / N
         completion_rate = completed_runs / N
 
         row = [scenario_id, N]
@@ -208,7 +241,7 @@ def main() -> None:
 
         row.append(round(HR_avg, 4))
         row.append(round(R_avg, 4))
-        row.append(round(T_exec_avg, 4))
+        row.extend(exec_time_stats(exec_times))
         row.append(completed_runs)
         row.append(round(completion_rate, 4))
 

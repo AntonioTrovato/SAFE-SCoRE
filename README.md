@@ -99,7 +99,7 @@ Four CSVs written into the run's output folder.
 
 | File | Contents |
 |---|---|
-| `SOTIF_Final.csv` | One row per scenario. For each of the 7 hazard types: **HR** (hazard rate), **R** (residual risk), **S** (severity). Plus `HR_avg`, `R_avg`, mean execution time, `completed_runs` and `completion_rate`. |
+| `SOTIF_Final.csv` | One row per scenario. For each of the 7 hazard types: **HR** (hazard rate), **R** (residual risk), **S** (severity). Plus `HR_avg`, `R_avg`, execution-time statistics per scenario (`T_exec_avg`, `_median`, `_min`, `_max`, `_p90`, `_p95`, `_p99`, wall-clock seconds over its runs), `completed_runs` and `completion_rate`. |
 | `sotif_hazard_leaderboard.csv` | Scenarios ranked by risk. For each hazard type: **P** (probability of occurrence), **S** (severity), **R** (residual risk = P × S). Flags each scenario via `is_non_acceptable` when any hazard's R exceeds that hazard's own `acceptance_threshold_<hazard>`. |
 | `odd_scores.csv` | Per-scenario ODD scores by category and overall, the ODD values observed, and the triggering conditions that fired. |
 | `odd_tc_coverage_{all,non_acceptable}.csv` | How much of the declared ODD/TC space the suite actually exercised: `declared_values` vs `observed_values`, `coverage`, and `entropy_norm` (how evenly the observed values were spread). The `non_acceptable` variant restricts this to scenarios that exceeded the risk threshold. |
