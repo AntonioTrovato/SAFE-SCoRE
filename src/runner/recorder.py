@@ -112,7 +112,6 @@ def snapshot_world_state(ctx: RunnerContext, ego_actor: carla.Vehicle) -> Dict[s
         "num_pedestrians": len(walkers),
         "ego_speed_limit_kmh": speed_limit_kmh,
         "mission_timeout_s": ctx.timeout_s,
-        "num_waypoints": 0,  # not generically available across arbitrary .scenic behaviors
     }
 
 

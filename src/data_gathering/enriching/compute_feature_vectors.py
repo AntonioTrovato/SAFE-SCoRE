@@ -30,7 +30,7 @@ RUN_FIELDS = [
     "lane_invasion_count", "off_road_count",
     "time_to_first_hazard", "time_to_first_collision", "time_to_first_lane_invasion", "time_to_first_off_road",
     "completion_rate", "actual_distance_traveled", "max_progress_reached",
-    "odd_global", "tc_count",
+    "tc_count",
 ]
 
 # Aggregation types for scenario-level

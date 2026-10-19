@@ -146,15 +146,17 @@ This simplified structure can be used as a reference for developers integrating 
   "mission": {...},
   "event": {...},
   "sotif": {
-    "odd_env": 0.95,
-    "odd_infra": 0.6,
-    "odd_traffic": 0.9,
-    "odd_operational": 0.8,
-    "odd_global": 0.8125,
+    "odd_values": {
+      "weather": "ClearNoon",
+      "time_of_day": "noon",
+      "road_condition": "dry",
+      "traffic_density": "low",
+      "pedestrian_density": "low",
+      "operational_speed": "low",
+      "mission_duration": "medium"
+    },
     "triggering_conditions": [
-      "complex_route",
-      "critical_ttc",
-      "very_complex_route"
+      "critical_ttc"
     ]
   }
 ```

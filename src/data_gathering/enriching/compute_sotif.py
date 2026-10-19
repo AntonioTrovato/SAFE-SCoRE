@@ -8,10 +8,6 @@ from typing import Dict, Any, List
 
 from sotif_config import load_config, get_hazard_severities
 
-# Threshold (meters) below which the route is considered completed
-COMPLETION_THRESHOLD_M = 8.0
-
-
 # ---------------------------------------------------------------------
 # Filename parsing: <scenario_id>_run_<NN>_log_basic.json
 # ---------------------------------------------------------------------
@@ -54,51 +50,6 @@ def exec_time_stats(times) -> list:
     vals = [sum(v) / len(v), _percentile(v, 50), v[0], v[-1],
             _percentile(v, 90), _percentile(v, 95), _percentile(v, 99)]
     return [round(x, 4) for x in vals]
-
-
-def _euclidean_2d(a, b) -> float:
-    dx = float(a[0]) - float(b[0])
-    dy = float(a[1]) - float(b[1])
-    return (dx * dx + dy * dy) ** 0.5
-
-
-def is_route_completed(log: Dict[str, Any], threshold_m: float = COMPLETION_THRESHOLD_M) -> bool:
-    """
-    Considers the route completed if the ego (last frame) is within threshold_m
-    of mission.end_location (2D). If enriched functional metrics are present,
-    prefer those (more robust and consistent with the rest of the pipeline).
-    """
-    # 1) if the log has already been enriched, use the already-computed robust evaluation
-    try:
-        perf = log.get("results", {}).get("functional_metrics", {}).get("performance", {})
-        if isinstance(perf, dict):
-            # field added by the updated pipeline
-            if "is_completed_final" in perf and perf["is_completed_final"] is not None:
-                return bool(perf["is_completed_final"])
-            # fallback: completion_frame present
-            if perf.get("completion_frame") not in (None, 0):
-                return True
-    except Exception:
-        pass
-
-    mission = log.get("mission", {})
-    end_loc = mission.get("end_location")
-    frames = log.get("frames", [])
-
-    if not end_loc or len(end_loc) < 2:
-        return False
-    if not frames:
-        return False
-
-    last_frame = frames[-1]
-    ego = last_frame.get("ego_vehicle", {})
-    ego_loc = ego.get("location")
-
-    if not ego_loc or len(ego_loc) < 2:
-        return False
-
-    dist = _euclidean_2d(ego_loc, end_loc)
-    return dist <= threshold_m
 
 
 # ---------------------------------------------------------------------
@@ -171,8 +122,6 @@ def main() -> None:
         "HR_avg",
         "R_avg",
         *EXEC_TIME_STATS,
-        "completed_runs",
-        "completion_rate",
     ])
 
     rows = []
@@ -185,7 +134,6 @@ def main() -> None:
 
         hazard_run_counts = {h: 0 for h in HAZARDS}
         exec_times = []
-        completed_runs = 0
 
         for p in runs:
             with p.open() as f:
@@ -200,7 +148,7 @@ def main() -> None:
             # actual (wall-clock) execution time
             results = data.get("results", {})
             # a run without a valid execution time is left out of the time
-            # statistics (it still counts for hazards and completion)
+            # statistics (it still counts for hazards)
             try:
                 t = float(results.get("total_simulation_time"))
             except (TypeError, ValueError):
@@ -209,10 +157,6 @@ def main() -> None:
                 exec_times.append(t)
             else:
                 print(f"[WARN] {p.name}: no valid total_simulation_time, excluded from execution-time statistics")
-
-            # route completed?
-            if is_route_completed(data, threshold_m=COMPLETION_THRESHOLD_M):
-                completed_runs += 1
 
         # hazard rate
         HR = {h: hazard_run_counts[h] / N for h in HAZARDS}
@@ -226,7 +170,6 @@ def main() -> None:
         # aggregates
         HR_avg = sum(HR[h] for h in HAZARDS) / len(HAZARDS)
         R_avg = sum(R[h] for h in HAZARDS) / len(HAZARDS)
-        completion_rate = completed_runs / N
 
         row = [scenario_id, N]
 
@@ -242,8 +185,6 @@ def main() -> None:
         row.append(round(HR_avg, 4))
         row.append(round(R_avg, 4))
         row.extend(exec_time_stats(exec_times))
-        row.append(completed_runs)
-        row.append(round(completion_rate, 4))
 
         rows.append(row)
 

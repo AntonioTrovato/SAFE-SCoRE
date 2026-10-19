@@ -86,8 +86,8 @@ python -m src.analysis.run_analysis                        # cross-suite compari
 
 Expects an `outputs/` folder at the repo root, with one subfolder per scenario-generation tool/run (e.g. `outputs/SimADFuzz/`), each containing `*_log_basic.json` base logs. For every dataset subfolder, `SOTIFPipeline.run()` shells out (via `subprocess`) to these scripts in order:
 
-0. `src/data_gathering/enriching/orchestrator.py` — critical/functional/dynamics metrics (TTC, MDBV, TET, completion/stability, dynamics), invoked with `--input_dir`/`--output_dir` both set to the dataset folder (in-place enrichment); this is the one step with a different CLI shape, so `SOTIFPipeline` calls it via its own dedicated `compute_enriched_metrics()` method rather than the generic `_run_script()` helper (below).
-1. `src/data_gathering/enriching/compute_sotif_odd.py` — descriptive ODD scoring + triggering conditions, **driven by `config/sotif_odd_tc.yaml`** (see below) rather than hardcoded dicts → writes `odd_scores.csv` inside the dataset folder
+0. `src/data_gathering/enriching/orchestrator.py` — critical/functional/dynamics metrics (TTC, MDBV, TET, route stability, dynamics), invoked with `--input_dir`/`--output_dir` both set to the dataset folder (in-place enrichment); this is the one step with a different CLI shape, so `SOTIFPipeline` calls it via its own dedicated `compute_enriched_metrics()` method rather than the generic `_run_script()` helper (below).
+1. `src/data_gathering/enriching/compute_sotif_odd.py` — the value taken by each ODD factor + triggering conditions, **driven by `config/sotif_odd_tc.yaml`** (see below) rather than hardcoded dicts → writes `odd_scores.csv` inside the dataset folder
 2. `src/data_gathering/enriching/compute_sotif_hazard.py` — hazard/severity from event counts (expects filenames matching `<scenario_id>_run_<NN>_log_basic.json`), plus an `is_non_acceptable` column (any hazard's residual risk `R_h` exceeds that hazard's own threshold in `config/sotif_odd_tc.yaml`'s `hazards.acceptance_threshold`) → writes `sotif_hazard_leaderboard.csv`
 3. `src/data_gathering/enriching/compute_sotif.py` — final per-dataset SOTIF report → writes `SOTIF_Final.csv`, including per-scenario **execution-time statistics** (`T_exec_avg`, median, min, max, p90/p95/p99; runs without a valid time are excluded; from `results.total_simulation_time`, already computed by `CarlaBasicLogger.finalize_and_save()`)
 4. `src/analysis/odd_tc_coverage.py` — ODD/TC coverage & entropy against the config's declared taxonomy (see below), computed once over all scenarios and once restricted to `is_non_acceptable` ones → writes `odd_tc_coverage_all.csv` / `odd_tc_coverage_non_acceptable.csv`
@@ -97,7 +97,7 @@ Steps 1-4 all write their output CSV directly inside the dataset's own folder (n
 
 ### Config-driven ODD/TC (`config/sotif_odd_tc.yaml`)
 
-The ODD factor taxonomy (name/category/source-field/value→score map) and triggering-condition rules (`all_of` predicates over `world_state.*`/`derived.*`/`metrics.*` fields) live entirely in this YAML — loaded via `src/data_gathering/enriching/sotif_config.py` (shared by `compute_sotif_odd.py`, `compute_sotif_hazard.py`, and `src/analysis/odd_tc_coverage.py`). To plug in a different SUT's ODD, edit this file — no Python changes needed. `compute_sotif_odd.py`'s `compute_derived_fields()` is the one place raw `world_state` facts get turned into the categorical buckets (`weather_preset`, `time_of_day`, `traffic_density`, etc.) the config's factors reference; it's a generic heuristic (e.g. nearest-CARLA-preset matching for weather) explicitly meant to be reviewed/tuned, not gospel.
+The ODD factor taxonomy (name/source-field/list of declared values) and triggering-condition rules (`all_of` predicates over `world_state.*`/`derived.*`/`metrics.*` fields) live entirely in this YAML — loaded via `src/data_gathering/enriching/sotif_config.py` (shared by `compute_sotif_odd.py`, `compute_sotif_hazard.py`, and `src/analysis/odd_tc_coverage.py`). To plug in a different SUT's ODD, edit this file — no Python changes needed. `compute_sotif_odd.py`'s `compute_derived_fields()` is the one place raw `world_state` facts get turned into the categorical buckets (`weather_preset`, `time_of_day`, `traffic_density`, etc.) the config's factors reference; it's a generic heuristic (e.g. nearest-CARLA-preset matching for weather) explicitly meant to be reviewed/tuned, not gospel.
 
 `src/analysis/odd_tc_coverage.py` is distinct from `src/analysis/rq2_coverage_entropy.py`: the latter measures diversity over KMeans-*discovered* clusters of continuous dynamics/criticality metrics (still useful, untouched); the former measures coverage/entropy over the *named* ODD values/TC categories declared in the config, and reuses the same underlying risk/behavioral metrics (TTC, MDBV, dynamics, etc.) the rest of the project already computes — it isn't a parallel metric suite.
 
@@ -124,12 +124,12 @@ The unit of data flowing through every stage is a base log JSON (see `docs/base_
 
 - `tool`, `generation_id`, `scenario_id`, `map_name`, `run_index`, `delta_time` — run metadata
 - `mission` — ego route/destination info
-- `world_state` — raw facts snapshotted at scenario start by `src/runner/recorder.py` (weather floats, actor counts, map name, ego speed limit, mission timeout, waypoint count) — input to the config-driven ODD/TC computation
+- `world_state` — raw facts snapshotted at scenario start by `src/runner/recorder.py` (weather floats, actor counts, map name, ego speed limit, mission timeout) — input to the config-driven ODD/TC computation
 - `frames` — frame-by-frame ego + surrounding actor state (consumed by `critical.py`, `dynamic.py`, `functional.py` in enrichment)
 - `results.event_counts` / `results.events` — collision, red-light, speeding, stop-sign, off-road, lane-invasion events
 - `results.critical_metrics`, `results.functional_metrics`, `results.dynamics_metrics` — populated by `src/data_gathering/enriching/orchestrator.py`
 - `results.total_simulation_time` / `results.simulated_time` — wall-clock vs. simulated execution time, computed automatically by `CarlaBasicLogger.finalize_and_save()`; `total_simulation_time` is what feeds the final report's `T_exec_avg`
-- `sotif` — `odd_env`/`odd_infra`/`odd_traffic`/`odd_operational`/`odd_global` scores, `odd_values` (categorical value chosen per configured ODD factor), and `triggering_conditions`, all populated by `compute_sotif_odd.py`
+- `sotif` — `odd_values` (categorical value chosen per configured ODD factor) and `triggering_conditions`, both populated by `compute_sotif_odd.py`
 
 `src/data_gathering/enriching/log_normalization.py` (`normalize_events`, `ensure_event_counts_schema`) is run first on every log to reconcile naming/schema drift before any metrics are computed — reuse it rather than reading raw event fields directly when writing new enrichment code.
 

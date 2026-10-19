@@ -84,7 +84,6 @@ class FeatureVector:
     actual_distance_traveled: Optional[float] = None
     max_progress_reached: Optional[float] = None
 
-    odd_global: Optional[float] = None
     tc_count: int = 0
 
 
@@ -170,6 +169,5 @@ class EnrichedLogFeatureExtractorFast:
             max_progress_reached=_to_float(_safe_get(log, ["results", "functional_metrics", "performance", "max_progress_reached"]))
                                or _to_float(_safe_get(log, ["results", "max_progress_reached"])),
 
-            odd_global=_to_float(_safe_get(log, ["sotif", "odd_global"])),
             tc_count=tc_count,
         )

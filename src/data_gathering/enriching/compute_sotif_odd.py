@@ -1,21 +1,20 @@
 """
 compute_sotif_odd.py
 
-Computes descriptive ODD (Operational Design Domain) sub-scores and
-triggering conditions for each base log in a dataset, driven entirely by
-config/sotif_odd_tc.yaml (see that file for the factor/condition schema)
-instead of hardcoded Python dicts - so a user can plug in their own SUT's
-ODD/TC taxonomy without touching this file.
+Computes, for each base log in a dataset, the value taken by every ODD
+(Operational Design Domain) factor and the triggering conditions that fire,
+driven entirely by config/sotif_odd_tc.yaml (see that file for the
+factor/condition schema) instead of hardcoded Python dicts - so a user can
+plug in their own SUT's ODD/TC taxonomy without touching this file.
 
 Reads, per log:
   - log["world_state"]: raw facts snapshotted by the runner at scenario
     start (weather floats, actor counts, map name, speed limit, mission
-    timeout/waypoints) - see runner/recorder.py's snapshot_world_state().
+    timeout) - see runner/recorder.py's snapshot_world_state().
   - log["results"]["critical_metrics"] / ["dynamics_metrics"]: already
     computed by data_gathering/enriching/orchestrator.py.
 
 Writes, per log:
-  - log["sotif"]["odd_env"/"odd_infra"/"odd_traffic"/"odd_operational"/"odd_global"]
   - log["sotif"]["odd_values"]: the categorical value each configured ODD
     factor took (used by analysis/odd_tc_coverage.py to compute coverage)
   - log["sotif"]["triggering_conditions"]: list of fired TC names
@@ -29,18 +28,11 @@ from typing import Any, Dict
 
 from sotif_config import load_config, compute_odd_factor_value, compute_triggering_conditions
 
-CATEGORY_TO_FIELD = {
-    "environmental": "odd_env",
-    "infrastructure": "odd_infra",
-    "traffic": "odd_traffic",
-    "operational": "odd_operational",
-}
-
 # Approximate reference points for a handful of standard CARLA weather
 # presets (cloudiness, precipitation, precipitation_deposits, wetness).
 # This is only a "nearest label" heuristic to turn CARLA's raw weather
 # floats back into a preset-like name for config lookups; the actual
-# scoring per weather value lives in config/sotif_odd_tc.yaml and is meant
+# declared weather values live in config/sotif_odd_tc.yaml and are meant
 # to be reviewed/tuned by the user for their own ODD.
 _WEATHER_PRESET_REFERENCE = {
     "ClearNoon": (15.0, 0.0, 0.0, 0.0),
@@ -94,14 +86,6 @@ def _density_bucket(count: int) -> str:
     return "high"
 
 
-def _length_bucket(num_waypoints: int) -> str:
-    if num_waypoints < 20:
-        return "short"
-    if num_waypoints < 50:
-        return "medium"
-    return "long"
-
-
 def _speed_bucket(speed_limit_kmh: float) -> str:
     if speed_limit_kmh <= 50:
         return "low"
@@ -127,7 +111,6 @@ def compute_derived_fields(world_state: Dict[str, Any]) -> Dict[str, Any]:
         "road_condition": _road_condition_bucket(world_state),
         "traffic_density": _density_bucket(int(world_state.get("num_npc_vehicles", 0))),
         "pedestrian_density": _density_bucket(int(world_state.get("num_pedestrians", 0))),
-        "mission_length_bucket": _length_bucket(int(world_state.get("num_waypoints", 0))),
         "speed_limit_bucket": _speed_bucket(float(world_state.get("ego_speed_limit_kmh") or 50.0)),
         "timeout_bucket": _duration_bucket(float(world_state.get("mission_timeout_s") or 30.0)),
     }
@@ -149,25 +132,14 @@ def compute_odd_and_tc(log_data: Dict[str, Any], config: Dict[str, Any]):
 
     context = {"world_state": world_state, "derived": derived, "metrics": metrics}
 
-    odd_values: Dict[str, str] = {}
-    category_scores: Dict[str, list] = {f: [] for f in CATEGORY_TO_FIELD.values()}
-
-    for factor in config.get("odd_factors", []):
-        value_key, score = compute_odd_factor_value(factor, context)
-        odd_values[factor["name"]] = value_key
-        field_name = CATEGORY_TO_FIELD.get(factor.get("category"))
-        if field_name:
-            category_scores[field_name].append(score)
-
-    odd_scores = {
-        field_name: (sum(scores) / len(scores) if scores else 0.8)
-        for field_name, scores in category_scores.items()
+    odd_values: Dict[str, str] = {
+        factor["name"]: compute_odd_factor_value(factor, context)
+        for factor in config.get("odd_factors", [])
     }
-    odd_scores["odd_global"] = sum(odd_scores.values()) / len(odd_scores)
 
     tcs = compute_triggering_conditions(config.get("triggering_conditions", []), context)
 
-    return odd_scores, odd_values, tcs
+    return odd_values, tcs
 
 
 def main() -> None:
@@ -195,11 +167,6 @@ def main() -> None:
 
     header = [
         "scenario_id",
-        "odd_env",
-        "odd_infra",
-        "odd_traffic",
-        "odd_operational",
-        "odd_global",
         "odd_values",
         "triggering_conditions",
     ]
@@ -216,10 +183,9 @@ def main() -> None:
         scenario_id = data.get("scenario_id", path.stem)
         seen_scenarios.add(scenario_id)
 
-        odd_scores, odd_values, tcs = compute_odd_and_tc(data, config)
+        odd_values, tcs = compute_odd_and_tc(data, config)
 
         sotif_block = data.get("sotif", {})
-        sotif_block.update(odd_scores)
         sotif_block["odd_values"] = odd_values
         sotif_block["triggering_conditions"] = tcs
         data["sotif"] = sotif_block
@@ -229,11 +195,6 @@ def main() -> None:
 
         rows.append([
             scenario_id,
-            odd_scores["odd_env"],
-            odd_scores["odd_infra"],
-            odd_scores["odd_traffic"],
-            odd_scores["odd_operational"],
-            odd_scores["odd_global"],
             json.dumps(odd_values),
             ";".join(tcs),
         ])

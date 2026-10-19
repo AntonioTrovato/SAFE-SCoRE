@@ -48,7 +48,7 @@ from typing import Dict, List, Optional, Set
 import numpy as np
 
 sys.path.append(str(Path(__file__).resolve().parents[1] / "data_gathering" / "enriching"))
-from sotif_config import load_config  # noqa: E402
+from sotif_config import load_config, get_odd_factor_values  # noqa: E402
 
 _FILENAME_RE = re.compile(r"(.+)_run_(\d+)_log_basic\.json")
 
@@ -118,7 +118,7 @@ def _compute_rows(annotations: List[ScenarioAnnotation], odd_factors_cfg, tc_def
 
     for factor in odd_factors_cfg:
         name = factor["name"]
-        declared_values = list(factor.get("values", {}).keys())
+        declared_values = get_odd_factor_values(factor)
         universe_size = len(declared_values) if declared_values else 1
 
         counts: Dict[str, int] = defaultdict(int)

@@ -10,9 +10,9 @@
 # ---------------------------------------------------------------------------
 # Hazard acceptance
 # ---------------------------------------------------------------------------
-# A scenario is "non-acceptable" if, for at least one hazard computed by
+# A scenario is "non-acceptable" if, for at least one hazard h computed by
 # compute_sotif_hazard.py, the residual risk R_h = P_h * S_h exceeds that
-# hazard's own acceptance threshold (hazards.acceptance_threshold.<hazard>).
+# hazard's own acceptance threshold T_h (hazards.acceptance_threshold.<h>).
 # Every hazard declared under hazards.severity needs a threshold in [0, 1].
 hazards:
   acceptance_threshold:
@@ -44,95 +44,46 @@ hazards:
 # ---------------------------------------------------------------------------
 # Each factor:
 #   name       - identifier, used as the key in sotif.odd_values
-#   category   - one of: environmental, infrastructure, traffic, operational
-#                (the four sub-scores averaged into sotif.odd_global)
 #   source     - dotted path read from the log, rooted at either
 #                "world_state.*" (raw facts snapshotted by the runner at
 #                scenario start: weather floats, actor counts, map name,
-#                speed limit, mission timeout/waypoints) or "derived.*"
+#                speed limit, mission timeout) or "derived.*"
 #                (categorical buckets computed once, generically, by
 #                compute_sotif_odd.py from world_state - see its
 #                compute_derived_fields())
-#   values     - map of observed-value -> score in [0, 1]
-#   default    - score used when the observed value isn't a key in `values`
+#   values     - the declared values the factor can take. This list is the
+#                universe against which coverage and entropy are computed
+#                (analysis/odd_tc_coverage.py). A value observed in a run but
+#                not declared here is still recorded in sotif.odd_values, but
+#                does not count towards coverage.
 odd_factors:
   - name: weather
-    category: environmental
     source: derived.weather_preset
-    values:
-      ClearNoon: 1.0
-      CloudyNoon: 0.9
-      WetNoon: 0.8
-      SoftRainNoon: 0.7
-      HardRainNoon: 0.5
-    default: 0.6
+    values: [ClearNoon, CloudyNoon, WetNoon, SoftRainNoon, HardRainNoon]
 
   - name: time_of_day
-    category: environmental
     source: derived.time_of_day
-    values:
-      noon: 1.0
-      morning: 0.9
-      afternoon: 0.9
-      dawn: 0.7
-      dusk: 0.7
-      night: 0.4
-    default: 0.7
+    values: [noon, morning, afternoon, dawn, dusk, night]
 
   - name: road_condition
-    category: environmental
     source: derived.road_condition
-    values:
-      dry: 1.0
-      wet: 0.8
-      snow: 0.4
-      ice: 0.3
-    default: 0.8
-
-  - name: infra_complexity
-    category: infrastructure
-    source: derived.mission_length_bucket
-    values:
-      short: 1.0
-      medium: 0.8
-      long: 0.6
-    default: 0.8
+    values: [dry, wet, snow, ice]
 
   - name: traffic_density
-    category: traffic
     source: derived.traffic_density
-    values:
-      low: 1.0
-      medium: 0.8
-      high: 0.5
-    default: 0.8
+    values: [low, medium, high]
 
   - name: pedestrian_density
-    category: traffic
     source: derived.pedestrian_density
-    values:
-      low: 1.0
-      medium: 0.8
-      high: 0.5
-    default: 0.8
+    values: [low, medium, high]
 
   - name: operational_speed
-    category: operational
     source: derived.speed_limit_bucket
-    values:
-      low: 1.0
-      medium: 0.8
-      high: 0.5
-    default: 0.8
+    values: [low, medium, high]
 
   - name: mission_duration
-    category: operational
     source: derived.timeout_bucket
-    values:
-      short: 1.0
-      medium: 0.8
-      long: 0.6
-    default: 0.8
+    values: [short, medium, long]
 
 # ---------------------------------------------------------------------------
 # Triggering conditions
@@ -207,15 +158,3 @@ triggering_conditions:
       - field: metrics.min_ttc
         op: lt
         value: 4.0
-
-  - name: complex_route
-    all_of:
-      - field: world_state.num_waypoints
-        op: gt
-        value: 50
-
-  - name: very_complex_route
-    all_of:
-      - field: world_state.num_waypoints
-        op: gt
-        value: 80

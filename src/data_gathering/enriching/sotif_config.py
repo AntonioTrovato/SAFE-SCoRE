@@ -107,16 +107,19 @@ def evaluate_predicate(pred: Dict[str, Any], context: Dict[str, Any]) -> bool:
         return False
 
 
-def compute_odd_factor_value(factor: Dict[str, Any], context: Dict[str, Any]) -> (str, float):
-    """Returns (matched_value_key, score) for one configured ODD factor."""
-    raw_value = resolve_field(context, factor["source"])
-    values: Dict[str, float] = factor.get("values", {})
-    default_score = float(factor.get("default", 0.7))
+def get_odd_factor_values(factor: Dict[str, Any]) -> List[str]:
+    """The declared values of one ODD factor (its `values` list)."""
+    values = factor.get("values")
+    if not isinstance(values, (list, dict)) or not values:
+        raise ValueError(f"config: ODD factor '{factor.get('name')}' needs a non-empty 'values' list")
+    return [str(v) for v in values]
 
-    key = str(raw_value) if raw_value is not None else None
-    if key is not None and key in values:
-        return key, float(values[key])
-    return (key if key is not None else "unknown"), default_score
+
+def compute_odd_factor_value(factor: Dict[str, Any], context: Dict[str, Any]) -> str:
+    """The value one configured ODD factor takes in the given context, as a
+    string ('unknown' when its source field is missing)."""
+    raw_value = resolve_field(context, factor["source"])
+    return str(raw_value) if raw_value is not None else "unknown"
 
 
 def compute_triggering_conditions(
