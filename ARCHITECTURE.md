@@ -4,7 +4,7 @@ This file documents the internal structure, package layout, and key mechanisms o
 
 ## Project overview
 
-SAFE-SCoRE is a SOTIF-aligned (ISO 21448) framework for executing a suite of driving scenarios in the CARLA simulator and scoring every execution as safety evidence. The ego can be driven by CARLA's built-in agent or by a real AD stack (Autoware), so a suite can be used to evaluate an actual system under test. `src/runner/run_experiment.py` executes a suite of Scenic (`.scenic`) scenarios directly on CARLA (`src/runner/`) and produces base-log JSON files; the rest of the pipeline (`src/data_gathering/`, `src/pipeline/`, `src/analysis/`) enriches those logs with SOTIF/ODD/hazard/behavioral metrics and produces the suite report. Where the scenarios came from is out of scope; comparing scenario generators is one possible use of the output (`src/analysis/`), not the purpose of the tool. Logs can also come from an external scenario generator wired in independently (see `docs/integration.md`) — the enrichment/analysis stages don't care which path produced them, as long as the base-log JSON shape matches.
+SAFE-SCoRE is a SOTIF-aligned (ISO 21448) framework for executing a suite of driving scenarios in the CARLA simulator and scoring every execution as safety evidence. The ego can be driven by the behavior defined in the Scenic scenario or by a real AD stack (Autoware), so a suite can be used to evaluate an actual system under test. `src/runner/run_experiment.py` executes a suite of Scenic (`.scenic`) scenarios directly on CARLA (`src/runner/`) and produces base-log JSON files; the rest of the pipeline (`src/data_gathering/`, `src/pipeline/`, `src/analysis/`) enriches those logs with SOTIF/ODD/hazard/behavioral metrics and produces the suite report. Where the scenarios came from is out of scope; comparing scenario generators is one possible use of the output (`src/analysis/`), not the purpose of the tool. Logs can also come from an external scenario generator wired in independently (see `docs/integration.md`) — the enrichment/analysis stages don't care which path produced them, as long as the base-log JSON shape matches.
 
 The stage separation is fundamental to the codebase: **scenario execution + logging** (`src/runner/` for Scenic/CARLA, or an externally-integrated generator using `src/data_gathering/carlaBasicLogger.py` directly) → **post-execution SOTIF enrichment and analysis** (`src/data_gathering/enriching/`, `src/pipeline/`, `src/analysis/`).
 
@@ -30,7 +30,7 @@ All Python source lives under `src/`, organized into packages: `src/runner`, `sr
 python -m src.runner.run_experiment --input_dir scenic_example/common --output_folder scenic_demo --num_runs 10
 ```
 
-Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_runs` times each (SOTIF calls for repeated stochastic execution), then runs the SOTIF enrichment pipeline (below) automatically on the output folder it just produced — never on other folders under `outputs/` — unless `--skip_enrichment` is passed. Two engines, selected via `--engine`:
+Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_runs` times each (SOTIF calls for repeated stochastic execution), then runs the SOTIF enrichment pipeline (below) automatically on the output folder it just produced — never on other folders under `outputs/` — unless `--skip_enrichment` is passed. Two engines, selected via `--driver`:
 - `behavior_agent` (default): connects to a local CARLA server; the ego is driven by whatever `behavior` the `.scenic` file itself compiles in (e.g. `EgoBehavior()`) — Scenic's own driving behaviors are the "agent" here, no separate CARLA `BehaviorAgent` is involved.
 - `autoware`: hands the ego to a running Autoware Universe stack. Ownership is
   split - Autoware owns the map, the ego, its sensors and its control; Scenic
@@ -41,7 +41,7 @@ Executes every `.scenic` file found (recursively) under `--input_dir`, `--num_ru
   `CARLA_EXTERNAL_TICK=1` so only one client ticks. With `--carla_exe` and
   `--autoware_map_path` the runner starts, health-checks and restarts both
   processes itself, retrying a failed run up to `--max_run_attempts` times.
-  `--follow_camera` chases the ego with CARLA's spectator (both engines).
+  `--follow_camera` chases the ego with CARLA's spectator (both drivers).
   See README.md and docs/KNOWN_INSTABILITIES.md.
 
 Key mechanism (`src/runner/scenic_carla_runner.py` + `src/runner/recorder.py`): Scenic's `simulator.simulate()` owns the tick loop internally, so there's no external per-tick hook to call into `CarlaBasicLogger`. Instead, the runner builds a temp copy of each `.scenic` file (map path rewritten to an absolute path) with a small Scenic `monitor` appended, which calls `runner.recorder.on_monitor_step()` once per simulated step; that function lazily builds a `CarlaBasicLogger` + `ViolationMonitor` + collision/lane-invasion sensors on its first call (exactly what `docs/integration.md` describes for any generator) and calls `update_frame()` every step. **`src/data_gathering/carlaBasicLogger.py` and `violationMonitor.py` are reused completely unmodified** by this path.
@@ -50,12 +50,12 @@ The runner also snapshots a `world_state` block into each log (raw CARLA weather
 
 **Non-`.scenic` input (`_ensure_scenic_twins()` in `scenic_carla_runner.py`).** `run_directory()` scans `--input_dir` recursively before anything else runs, looking for files whose suffix is registered as convertible (`_CONVERTIBLE_SUFFIXES`, currently just `.xosc`). Each one is converted and written as a `.scenic` twin next to it (same name, `.scenic` extension), overwriting any twin from a previous run so results always reflect the current converter.
 
-Two converters ship with the project, and **which one is used is decided by `--engine`** (`CONVERTER_BY_ENGINE`), because they differ in exactly one respect — who drives the ego:
+Two converters ship with the project, and **which one is used is decided by `--driver`** (`CONVERTER_BY_DRIVER`), because they differ in exactly one respect — who drives the ego:
 
-- `--engine behavior_agent` → `converter.CARLA_converter:convert_file`. The ego carries a compiled Scenic behavior and follows its recorded route.
-- `--engine autoware` → `converter.AUTOWARE_converter:convert_file`. The ego carries no Scenic behavior, only `with rolename 'ego_vehicle'`, because Autoware controls it.
+- `--driver behavior_agent` → `converter.CARLA_converter:convert_file`. The ego carries a compiled Scenic behavior and follows its recorded route.
+- `--driver autoware` → `converter.AUTOWARE_converter:convert_file`. The ego carries no Scenic behavior, only `with rolename 'ego_vehicle'`, because Autoware controls it.
 
-Setting `SAFE_SCORE_XOSC_CONVERTER` overrides the choice for both engines. Picking the wrong one fails silently in the worst way: an Autoware-targeted scenario executed without Autoware spawns the ego and never moves it, so every SOTIF metric derived from that log describes a parked car.
+Setting `SAFE_SCORE_XOSC_CONVERTER` overrides the choice for both drivers. Picking the wrong one fails silently in the worst way: an Autoware-targeted scenario executed without Autoware spawns the ego and never moves it, so every SOTIF metric derived from that log describes a parked car.
 
 Both converters emit a spawn-height compatibility shim (`_spawn_height_fix()`): Scenic places ground actors at `waypoint.z + 0.5`, which on CARLA 0.9.15 lands inside the generated road mesh and makes `try_spawn_actor()` refuse; the shim retries refused spawns slightly higher (`SPAWN_LIFT_OFFSETS`) without ever altering recorded x/y/heading.
 
@@ -88,9 +88,9 @@ Expects an `outputs/` folder at the repo root, with one subfolder per scenario-g
 
 0. `src/data_gathering/enriching/orchestrator.py` — critical/functional/dynamics metrics (TTC, MDBV, TET, route stability, dynamics), invoked with `--input_dir`/`--output_dir` both set to the dataset folder (in-place enrichment); this is the one step with a different CLI shape, so `SOTIFPipeline` calls it via its own dedicated `compute_enriched_metrics()` method rather than the generic `_run_script()` helper (below).
 1. `src/data_gathering/enriching/compute_sotif_odd.py` — the value taken by each ODD factor + triggering conditions, **driven by `config/sotif_odd_tc.yaml`** (see below) rather than hardcoded dicts → writes `odd_scores.csv` inside the dataset folder
-2. `src/data_gathering/enriching/compute_sotif_hazard.py` — hazard/severity from event counts (expects filenames matching `<scenario_id>_run_<NN>_log_basic.json`), plus an `is_non_acceptable` column (any hazard's residual risk `R_h` exceeds that hazard's own threshold in `config/sotif_odd_tc.yaml`'s `hazards.acceptance_threshold`) → writes `sotif_hazard_leaderboard.csv`
-3. `src/data_gathering/enriching/compute_sotif.py` — final per-dataset SOTIF report → writes `SOTIF_Final.csv`, including per-scenario **execution-time statistics** (`T_exec_avg`, median, min, max, p90/p95/p99; runs without a valid time are excluded; from `results.total_simulation_time`, already computed by `CarlaBasicLogger.finalize_and_save()`)
-4. `src/analysis/odd_tc_coverage.py` — ODD/TC coverage & entropy against the config's declared taxonomy (see below), computed once over all scenarios and once restricted to `is_non_acceptable` ones → writes `odd_tc_coverage_all.csv` / `odd_tc_coverage_non_acceptable.csv`
+2. `src/data_gathering/enriching/compute_sotif_hazard.py` — hazard/severity from event counts (expects filenames matching `<scenario_id>_run_<NN>_log_basic.json`), plus an `is_non_acceptable` column (any hazard's residual risk `R_h` exceeds that hazard's own threshold in `config/sotif_odd_tc.yaml`'s `hazards.acceptance_threshold`) → writes `final_hazard_report.csv`
+3. `src/data_gathering/enriching/compute_execution_time_report.py` — final per-dataset execution-time report → writes `final_execution_time_report.csv` with the per-scenario **execution-time statistics** (`T_exec_avg`, median, min, max, p90/p95/p99; runs without a valid time are excluded; from `results.total_wall_clock_time`, already computed by `CarlaBasicLogger.finalize_and_save()`)
+4. `src/analysis/odd_tc_coverage.py` — ODD/TC coverage & entropy against the config's declared taxonomy (see below), computed over the whole suite → writes `odd_coverage_entropy_final_report.csv` (one row per ODD factor), `odd_coverage_detail_final_report.csv` (one row per declared ODD value) and `tc_coverage_detail_final_report.csv` (one row per declared TC plus an `ALL_TCS` summary row)
 5. (available but not wired into `.run()`) `src/data_gathering/enriching/compute_feature_vectors.py` — RQ3 feature vector extraction, invoked via `--outputs_dir`/`--out_dir` rather than `--dataset_dir`
 
 Steps 1-4 all write their output CSV directly inside the dataset's own folder (no filename prefix needed, since each dataset already lives in its own directory) and are invoked uniformly as `python <script> --dataset_dir <path>` through `SOTIFPipeline._run_script()`. When adding a new step with that same `--dataset_dir` shape, follow the existing pattern: an `argparse` CLI taking `--dataset_dir`, callable standalone, output written inside `dataset_dir` itself, and wired into `SOTIFPipeline` as a `self._run_script(...)` call (script paths there are rooted at `base_dir / "src" / ...`).
@@ -108,7 +108,7 @@ python src/data_gathering/enriching/orchestrator.py --input_dir outputs --worker
 
 ### Analysis pipeline (`src/analysis/run_analysis.py` → `src/analysis/pipeline.py`)
 
-`AnalysisPipeline` consumes the CSVs produced by the SOTIF pipeline (e.g. `*_SOTIF_Final.csv`, `*_sotif_hazard_leaderboard.csv`) and runs individual research-question analyzers, each independently invocable:
+`AnalysisPipeline` consumes the CSVs produced by the SOTIF pipeline (e.g. `*_final_hazard_report.csv`; the older `*_SOTIF_Final.csv` and `*_sotif_hazard_leaderboard.csv` names are still recognised by `rq1`) and runs individual research-question analyzers, each independently invocable:
 - `src/analysis/rq1_hazard_effectiveness.py` — hazard exposure effectiveness across tools
 - `src/analysis/rq2_diversity.py`, `rq2_coverage_entropy.py`, `rq2_event_percentage.py` — hazardous-scenario diversity (UMAP+KMeans clustering, cluster-based coverage entropy, per-hazard event percentages)
 - `src/analysis/rq4_driving_style_non_collision.py` — non-collision driving-style comparison
@@ -128,7 +128,7 @@ The unit of data flowing through every stage is a base log JSON (see `docs/base_
 - `frames` — frame-by-frame ego + surrounding actor state (consumed by `critical.py`, `dynamic.py`, `functional.py` in enrichment)
 - `results.event_counts` / `results.events` — collision, red-light, speeding, stop-sign, off-road, lane-invasion events
 - `results.critical_metrics`, `results.functional_metrics`, `results.dynamics_metrics` — populated by `src/data_gathering/enriching/orchestrator.py`
-- `results.total_simulation_time` / `results.simulated_time` — wall-clock vs. simulated execution time, computed automatically by `CarlaBasicLogger.finalize_and_save()`; `total_simulation_time` is what feeds the final report's `T_exec_avg`
+- `results.total_wall_clock_time` / `results.simulated_time` — real (wall-clock) vs. simulated execution time, computed automatically by `CarlaBasicLogger.finalize_and_save()`; `total_wall_clock_time` is what feeds the final report's `T_exec_avg`
 - `sotif` — `odd_values` (categorical value chosen per configured ODD factor) and `triggering_conditions`, both populated by `compute_sotif_odd.py`
 
 `src/data_gathering/enriching/log_normalization.py` (`normalize_events`, `ensure_event_counts_schema`) is run first on every log to reconcile naming/schema drift before any metrics are computed — reuse it rather than reading raw event fields directly when writing new enrichment code.

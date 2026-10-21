@@ -60,7 +60,7 @@ def main():
     logs_dir = dataset_dir
 
     # output CSV, written inside the dataset's own output folder
-    out_csv = dataset_dir / "sotif_hazard_leaderboard.csv"
+    out_csv = dataset_dir / "final_hazard_report.csv"
 
     print(f"[INFO] Dataset        : {dataset_name}")
     print(f"[INFO] Input logs     : {logs_dir}")

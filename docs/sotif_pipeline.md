@@ -28,11 +28,11 @@ For each dataset folder, `SOTIFPipeline.run()` executes, in order:
 
 **STEP A - ODD analysis** (`src/data_gathering/enriching/compute_sotif_odd.py`). Computes, per run, the concrete categorical value picked for each configured ODD factor (`sotif.odd_values`), and the list of triggering conditions that fired (`sotif.triggering_conditions`). Entirely driven by `config/sotif_odd_tc.yaml` - see `docs/enrichment.md`. Writes `odd_scores.csv` inside the dataset folder.
 
-**STEP B - Hazard & severity** (`src/data_gathering/enriching/compute_sotif_hazard.py`). For each scenario (grouped across its runs), computes the empirical probability `P_h`, a fixed CARLA-Leaderboard-style severity `S_h`, and the residual risk `R_h = P_h * S_h` for 7 hazard categories: `collision_vehicle`, `collision_pedestrian`, `collision_static`, `red_light`, `stop_sign`, `off_road`, `lane_invasion`. A scenario is flagged `is_non_acceptable` if, for at least one hazard, `R_h` exceeds that hazard's own acceptance threshold (`hazards.acceptance_threshold.<hazard>` in `config/sotif_odd_tc.yaml`, default `0.2` each). The CSV carries one `acceptance_threshold_<hazard>` column per hazard. Writes `sotif_hazard_leaderboard.csv`.
+**STEP B - Hazard & severity** (`src/data_gathering/enriching/compute_sotif_hazard.py`). For each scenario (grouped across its runs), computes the empirical probability `P_h`, a fixed CARLA-Leaderboard-style severity `S_h`, and the residual risk `R_h = P_h * S_h` for 7 hazard categories: `collision_vehicle`, `collision_pedestrian`, `collision_static`, `red_light`, `stop_sign`, `off_road`, `lane_invasion`. A scenario is flagged `is_non_acceptable` if, for at least one hazard, `R_h` exceeds that hazard's own acceptance threshold (`hazards.acceptance_threshold.<hazard>` in `config/sotif_odd_tc.yaml`, default `0.2` each). The CSV carries one `acceptance_threshold_<hazard>` column per hazard. Writes `final_hazard_report.csv`.
 
-**STEP C - Final SOTIF report** (`src/data_gathering/enriching/compute_sotif.py`). Aggregates, per scenario: hazard rates (`HR_*`), residual risk (`R_*`), their averages (`HR_avg`, `R_avg`), **execution-time statistics** (`T_exec_avg`, `T_exec_median`, `T_exec_min`, `T_exec_max`, `T_exec_p90`, `T_exec_p95`, `T_exec_p99`; runs without a valid time are excluded; from `results.total_simulation_time`, already computed per run by `CarlaBasicLogger.finalize_and_save()`). Writes `SOTIF_Final.csv`.
+**STEP C - Final execution-time report** (`src/data_gathering/enriching/compute_execution_time_report.py`). For each scenario, computes the mean, median, minimum, maximum and 90th/95th/99th percentile (`T_exec_avg`, `T_exec_median`, `T_exec_min`, `T_exec_max`, `T_exec_p90`, `T_exec_p95`, `T_exec_p99`) of the wall-clock seconds of its executions, read from `results.total_wall_clock_time` of each log, which `CarlaBasicLogger.finalize_and_save()` computes (logs written before the rename call it `total_simulation_time` and are still read). Runs without a valid time are excluded. Hazard rates, risks and severities are not repeated here: they are in `final_hazard_report.csv`. Writes `final_execution_time_report.csv`.
 
-**STEP D - ODD/TC coverage and entropy** (`src/analysis/odd_tc_coverage.py`). Aggregates each scenario's ODD values/triggering conditions across its runs, then computes, per configured ODD factor and for triggering conditions as a whole: coverage (fraction of the declared taxonomy observed at least once) and normalized Shannon entropy (how evenly the suite is spread across the declared values). Computed twice: once over all scenarios, once restricted to `is_non_acceptable` ones. Writes `odd_tc_coverage_all.csv` and `odd_tc_coverage_non_acceptable.csv`.
+**STEP D - ODD/TC coverage and entropy** (`src/analysis/odd_tc_coverage.py`). Counts, over the whole suite, how much of the declared ODD values and triggering conditions was exercised. A scenario counts towards every value and TC observed in any of its runs. Writes three reports: `odd_coverage_entropy_final_report.csv` (per ODD factor: declared and observed values, coverage, and normalized Shannon entropy, i.e. how evenly the scenarios are spread over the declared values), `odd_coverage_detail_final_report.csv` (per declared ODD value: number of scenarios and executions that exhibited it, 0 meaning not covered), and `tc_coverage_detail_final_report.csv` (per declared TC: same counts, plus a last `ALL_TCS` row with declared and observed TCs, coverage and entropy).
 
 
 ## Output
@@ -44,10 +44,11 @@ outputs/<name>/
 ├── <scenario>_run_01_log_basic.json   (enriched in place by STEP 0.5 and STEP A)
 ├── ...
 ├── odd_scores.csv
-├── sotif_hazard_leaderboard.csv
-├── SOTIF_Final.csv
-├── odd_tc_coverage_all.csv
-└── odd_tc_coverage_non_acceptable.csv
+├── final_hazard_report.csv
+├── final_execution_time_report.csv
+├── odd_coverage_entropy_final_report.csv
+├── odd_coverage_detail_final_report.csv
+└── tc_coverage_detail_final_report.csv
 ```
 
 ## Extending the pipeline

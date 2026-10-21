@@ -5,7 +5,7 @@ Keeps CARLA's spectator camera pointed at the ego, so a run can be watched.
 
 Purely an observer: it reads the ego's transform and moves the spectator. It
 never ticks the world and never touches world settings, so it cannot interfere
-with whoever owns the clock - which matters in --engine autoware, where exactly
+with whoever owns the clock - which matters in --driver autoware, where exactly
 one client may tick.
 
 Only useful when CARLA has a window, i.e. when it was NOT started with
@@ -101,7 +101,7 @@ class SpectatorFollower:
                         ego = None
                     if ego is None or not ego.is_alive:
                         vehicles = list(world.get_actors().filter("vehicle.*"))
-                        # --engine autoware: Autoware's ego carries role_name
+                        # --driver autoware: Autoware's ego carries role_name
                         # 'ego_vehicle'.
                         ego = next(
                             (
@@ -111,7 +111,7 @@ class SpectatorFollower:
                             ),
                             None,
                         )
-                        # --engine behavior_agent: Scenic spawns the ego itself
+                        # --driver behavior_agent: Scenic spawns the ego itself
                         # and sets no such role, so fall back to the
                         # lowest-id vehicle - Scenic creates the ego first, so
                         # it always holds the lowest actor id in the scene.

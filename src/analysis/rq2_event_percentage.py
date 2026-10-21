@@ -42,9 +42,9 @@ class RQ3EventPercentagesAnalyzer:
 
     @staticmethod
     def _infer_tool_name(p: Path) -> str:
-        suffix = "_metrics_sotif_hazard_leaderboard.csv"
-        if p.name.endswith(suffix):
-            return p.name.replace(suffix, "")
+        for suffix in ("_metrics_final_hazard_report.csv", "_metrics_sotif_hazard_leaderboard.csv"):
+            if p.name.endswith(suffix):
+                return p.name.replace(suffix, "")
         return p.stem
 
     @staticmethod

@@ -28,7 +28,7 @@ from data_gathering.violationMonitor import ViolationMonitor
 class GoalReached(RuntimeError):
     """Raised from on_monitor_step() when Autoware reports it has arrived.
 
-    An extra end condition for --engine autoware only; it stops the run early
+    An extra end condition for --driver autoware only; it stops the run early
     but is otherwise treated exactly like a normal completion, so it changes
     nothing in the metrics.
     """
@@ -67,7 +67,7 @@ class RunnerContext:
     ego_actor_id: Optional[int] = None
     world_state: Dict[str, Any] = field(default_factory=dict)
 
-    # --engine autoware only; None for behavior_agent, which leaves every
+    # --driver autoware only; None for behavior_agent, which leaves every
     # Autoware-specific branch below dead.
     autoware_session: Optional[Any] = None
     _steps: int = 0

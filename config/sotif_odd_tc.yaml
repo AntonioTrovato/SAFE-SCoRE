@@ -29,7 +29,7 @@ hazards:
   # name: it must match a counter in the base log's results.event_counts.
   # To add a hazard, implement a detector that increments that counter
   # (see data_gathering/carlaBasicLogger.py), then declare it here.
-  # Order here is the column order of SOTIF_Final.csv and the leaderboard.
+  # Order here is the column order of final_hazard_report.csv.
   severity:
     collision_pedestrian: 0.50
     collision_vehicle: 0.60

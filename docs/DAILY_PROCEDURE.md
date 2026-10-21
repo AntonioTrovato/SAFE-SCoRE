@@ -2,7 +2,7 @@
 
 Starting and stopping the environment by hand, once it is installed.
 
-> **You may not need this.** `python -m src.runner.run_experiment --engine autoware`
+> **You may not need this.** `python -m src.runner.run_experiment --driver autoware`
 > starts CARLA and Autoware itself, checks them, and restarts them on a crash.
 > This procedure is for driving the stack manually — debugging, demos, or
 > exploring in RViz.

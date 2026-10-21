@@ -74,9 +74,12 @@ def normalize_events(log: Dict[str, Any], *, max_timestamp_factor: float = 10.0)
     by_local, by_carla = build_frame_index(frames)
 
     results = log.get("results", {}) or {}
-    sim_t = _as_float(results.get("total_simulation_time"))
+    # Event and frame timestamps are in simulated seconds, so the plausibility
+    # thresholds below are scaled by the simulated duration of the run
+    # (results.simulated_time), never by the wall-clock time.
+    sim_t = _as_float(results.get("simulated_time"))
     if sim_t is None:
-        # fallback: last frame timestamp
+        # fallback: last frame timestamp (simulated seconds since the start)
         if frames:
             sim_t = _as_float(frames[-1].get("timestamp"))
         if sim_t is None:

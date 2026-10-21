@@ -18,7 +18,7 @@ variable (see the one-line patch in carla_autoware.py).
 Everything here is applied as runtime monkeypatches over Scenic, in the same
 style already used in scenic_carla_runner (_tuned_opendrive_generation,
 _spawn_diagnostics), so no fork of Scenic is required. All patches are undone
-on exit, and none of this is reachable from --engine behavior_agent.
+on exit, and none of this is reachable from --driver behavior_agent.
 """
 
 from __future__ import annotations
@@ -495,7 +495,7 @@ def autoware_ownership(session: AutowareSession):
         raise AutowareSessionError(
             f"scenario wants map '{map_name}' but Autoware is running '{current}'. "
             "Autoware is bound to one map at launch - relaunch it with the "
-            "matching map_path, or run this scenario with --engine behavior_agent."
+            "matching map_path, or run this scenario with --driver behavior_agent."
         )
 
     def _create(self, obj):

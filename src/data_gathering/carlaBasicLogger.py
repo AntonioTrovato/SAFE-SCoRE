@@ -46,7 +46,7 @@ class CarlaBasicLogger:
 
         # timing
         self.start_time = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.simulation_start_time = time.time()
+        self.wall_clock_start_epoch = time.time()
         self._first_timestamp = None
         self.delta_time = delta_time
         # frame counter for the log
@@ -76,7 +76,7 @@ class CarlaBasicLogger:
             "map_name": self.map_name,
             "run_index": self.run_index,
             "start_time": self.start_time,
-            "simulation_start_time": self.simulation_start_time,
+            "wall_clock_start_epoch": self.wall_clock_start_epoch,
             "delta_time": self.delta_time,
 
             "results" : {
@@ -384,7 +384,7 @@ class CarlaBasicLogger:
 
         # real-time (wall clock) duration
         sim_end_time = time.time()
-        self.scenario_data["results"]["total_simulation_time"] = sim_end_time - self.simulation_start_time
+        self.scenario_data["results"]["total_wall_clock_time"] = sim_end_time - self.wall_clock_start_epoch
 
         # simulator-side timestamps
         start_ts = self.scenario_data["frames"][0]["timestamp"]

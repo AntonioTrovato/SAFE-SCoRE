@@ -13,7 +13,7 @@ class SOTIFPipeline:
     1. Sanity check of the base logs
     2. ODD computation (descriptive)
     3. Hazard computation (Leaderboard-based)
-    4. Final report generation
+    4. Final execution-time report
     5. ODD/Triggering-condition coverage and entropy
     """
 
@@ -32,7 +32,7 @@ class SOTIFPipeline:
         self.step0_orchestrator_script = base_dir / "src" / "data_gathering" / "enriching" / "orchestrator.py"
         self.stepA_odd_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif_odd.py"
         self.stepB_hazard_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif_hazard.py"
-        self.stepC_report_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_sotif.py"
+        self.stepC_execution_time_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_execution_time_report.py"
         self.stepB2_feature_script = base_dir / "src" / "data_gathering" / "enriching" / "compute_feature_vectors.py"
         self.stepD_coverage_script = base_dir / "src" / "analysis" / "odd_tc_coverage.py"
 
@@ -172,12 +172,12 @@ class SOTIFPipeline:
         )
 
     # --------------------------------------------------
-    # STEP 4 - Final SOTIF report
+    # STEP 4 - Final execution-time report
     # --------------------------------------------------
-    def compute_final_report(self, dataset_dir: Path):
+    def compute_execution_time_report(self, dataset_dir: Path):
         self._run_script(
-            self.stepC_report_script,
-            "STEP C - Final SOTIF report",
+            self.stepC_execution_time_script,
+            "STEP C - Final execution-time report",
             dataset_dir
         )
 
@@ -211,7 +211,7 @@ class SOTIFPipeline:
             self.compute_enriched_metrics(dataset_dir)
             self.compute_odd(dataset_dir)
             self.compute_hazard(dataset_dir)
-            self.compute_final_report(dataset_dir)
+            self.compute_execution_time_report(dataset_dir)
             self.compute_odd_tc_coverage(dataset_dir)
 
         self.logger.info("\n===== SOTIF PIPELINE COMPLETE =====")

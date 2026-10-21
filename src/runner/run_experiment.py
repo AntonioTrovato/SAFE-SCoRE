@@ -8,7 +8,7 @@ the existing SOTIF enrichment/metrics pipeline on the resulting logs.
 Usage (from the repository root):
     python -m src.runner.run_experiment --input_dir scenic_example/common --output_folder scenic_demo
     python -m src.runner.run_experiment --input_dir scenic_example --output_folder scenic_full \
-        --num_runs 10 --engine autoware --address 10.0.0.5 --port 2000
+        --num_runs 10 --driver autoware --address 10.0.0.5 --port 2000
 """
 
 import argparse
@@ -39,11 +39,11 @@ def main() -> None:
     )
     parser.add_argument("--num_runs", type=int, default=10, help="Executions per scenario (default: 10)")
     parser.add_argument(
-        "--engine",
+        "--driver",
         choices=["behavior_agent", "autoware"],
         default="behavior_agent",
-        help="behavior_agent: ego driven by the behavior compiled into the Scenic file (default). "
-        "autoware: connects instead to the remote CARLA+Autoware service (--address/--port).",
+        help="Who drives the ego. behavior_agent: the behavior defined in the Scenic file (default). "
+        "autoware: an Autoware stack (needs --autoware_map_path).",
     )
     parser.add_argument("--address", default="127.0.0.1", help="CARLA server address")
     parser.add_argument("--port", type=int, default=2000, help="CARLA server port")
@@ -129,7 +129,7 @@ def main() -> None:
         "--autoware_map_path",
         default=None,
         help="Autoware map directory inside WSL (e.g. $HOME/autoware/autoware_map/Town05). "
-        "With --engine autoware this lets the runner relaunch Autoware when CARLA "
+        "With --driver autoware this lets the runner relaunch Autoware when CARLA "
         "crashes; a CARLA crash strands Autoware, so recovery has to restart both. "
         "Without it, a crash is fatal and both must be restarted by hand.",
     )
@@ -152,7 +152,7 @@ def main() -> None:
     runner = ScenicCarlaRunner(
         output_dir=output_dir,
         tool_name=args.output_folder,
-        engine=args.engine,
+        driver=args.driver,
         address=args.address,
         port=args.port,
         timestep=args.timestep,

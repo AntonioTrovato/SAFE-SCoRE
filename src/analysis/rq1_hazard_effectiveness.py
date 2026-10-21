@@ -64,6 +64,8 @@ class RQ1HazardEffectivenessAnalyzer:
             tool = None
             if name.endswith("_metrics_SOTIF_Final.csv"):
                 tool = name.replace("_metrics_SOTIF_Final.csv", "")
+            elif name.endswith("_metrics_final_hazard_report.csv"):
+                tool = name.replace("_metrics_final_hazard_report.csv", "")
             elif name.endswith("_metrics_sotif_hazard_leaderboard.csv"):
                 tool = name.replace("_metrics_sotif_hazard_leaderboard.csv", "")
 
@@ -73,7 +75,7 @@ class RQ1HazardEffectivenessAnalyzer:
         if not candidates:
             raise FileNotFoundError(
                 f"No recognized CSV found in {self.csv_root_dir}. "
-                f"Expected *_metrics_SOTIF_Final.csv or *_metrics_sotif_hazard_leaderboard.csv"
+                f"Expected *_metrics_final_hazard_report.csv (or the older *_metrics_SOTIF_Final.csv / *_metrics_sotif_hazard_leaderboard.csv)"
             )
 
         # If both Final and leaderboard exist for the same tool, keep Final

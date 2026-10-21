@@ -125,8 +125,10 @@ class EfficiencyTimeToHazardAnalyzer:
             # timeout: use the value from the file if present, otherwise 60
             timeout = self.timeout_s
             results = data.get("results", {}) or {}
-            if "total_simulation_time" in results:
-                t = self._safe_float(results.get("total_simulation_time"))
+            # legacy logs call this field "total_simulation_time" (same quantity)
+            wall_key = "total_wall_clock_time" if "total_wall_clock_time" in results else "total_simulation_time"
+            if wall_key in results:
+                t = self._safe_float(results.get(wall_key))
                 if t is not None and t > 0:
                     timeout = float(t)
 

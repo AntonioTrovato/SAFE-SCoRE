@@ -6,12 +6,12 @@ compatible with the rest of the SAFE-SCoRE pipeline (same shape as the logs
 produced by external tools via data_gathering.carlaBasicLogger, see
 docs/integration.md / docs/base_log_json.md).
 
-Default engine ("behavior_agent") drives the ego with Scenic's own compiled
+Default driver ("behavior_agent") drives the ego with Scenic's own compiled
 `behavior` (e.g. `EgoBehavior()` in the sample .scenic files) via
 scenic.simulators.carla - no separate CARLA BehaviorAgent needed. This path
 is unchanged and unaffected by anything below.
 
-The "autoware" engine instead hands the ego to a running Autoware stack, by
+The "autoware" driver instead hands the ego to a running Autoware stack, by
 splitting ownership of the simulation (see runner/autoware_session.py):
 
     Autoware  owns the map, the ego, its sensors and its control
@@ -129,7 +129,7 @@ def _realtime_pacing(step_period_s: float):
     and delta_time), so this is applied only when someone is actually looking,
     i.e. together with --follow_camera.
 
-    --engine autoware paces unconditionally through autoware_ownership, because
+    --driver autoware paces unconditionally through autoware_ownership, because
     Autoware's control loop costs real wall-clock time and cannot be outrun.
     """
     from scenic.simulators.carla.simulator import CarlaSimulation
@@ -240,7 +240,7 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 # The function takes (input_path, output_path) as strings and returns the
 # path it actually wrote.
 #
-# Which converter to use is decided by --engine, because the two differ in
+# Which converter to use is decided by --driver, because the two differ in
 # exactly one respect: who drives the ego.
 #
 #   behavior_agent -> converter.CARLA_converter     ego carries a compiled
@@ -254,12 +254,12 @@ def _prepare_temp_scenic(scenic_path: Path, tmp_dir: Path) -> Path:
 # scenario run without Autoware spawns the ego and never moves it, so every
 # SOTIF metric derived from that log describes a parked car.
 #
-# SAFE_SCORE_XOSC_CONVERTER overrides the choice for both engines.
-CONVERTER_BY_ENGINE = {
+# SAFE_SCORE_XOSC_CONVERTER overrides the choice for both drivers.
+CONVERTER_BY_DRIVER = {
     "behavior_agent": "converter.CARLA_converter:convert_file",
     "autoware": "converter.AUTOWARE_converter:convert_file",
 }
-DEFAULT_XOSC_CONVERTER = CONVERTER_BY_ENGINE["autoware"]
+DEFAULT_XOSC_CONVERTER = CONVERTER_BY_DRIVER["autoware"]
 
 
 def resolve_converter(spec: Optional[str] = None):
@@ -276,7 +276,7 @@ def resolve_converter(spec: Optional[str] = None):
     return getattr(module, func_name), spec
 
 
-def _convert_to_scenic(src: Path, dest: Path, engine: Optional[str] = None) -> Optional[Path]:
+def _convert_to_scenic(src: Path, dest: Path, driver: Optional[str] = None) -> Optional[Path]:
     """
     Read `src` (a non-.scenic scenario file) and write an equivalent
     .scenic file at `dest`. Returns the written path on success, or None
@@ -293,7 +293,7 @@ def _convert_to_scenic(src: Path, dest: Path, engine: Optional[str] = None) -> O
         return None
 
     try:
-        convert_file, spec = resolve_converter(CONVERTER_BY_ENGINE.get(engine))
+        convert_file, spec = resolve_converter(CONVERTER_BY_DRIVER.get(driver))
     except Exception:
         log.error("Could not load converter; cannot convert %s:\n%s",
                   src, traceback.format_exc())
@@ -314,7 +314,7 @@ def _convert_to_scenic(src: Path, dest: Path, engine: Optional[str] = None) -> O
     return Path(written)
 
 
-def _ensure_scenic_twins(input_dir: Path, engine: Optional[str] = None) -> None:
+def _ensure_scenic_twins(input_dir: Path, driver: Optional[str] = None) -> None:
     """
     Ensures every convertible scenario file (see _CONVERTIBLE_SUFFIXES, e.g.
     .xosc) found recursively under input_dir has an up-to-date .scenic twin
@@ -337,7 +337,7 @@ def _ensure_scenic_twins(input_dir: Path, engine: Optional[str] = None) -> None:
     if not convertible_files:
         return
 
-    _, spec = resolve_converter(CONVERTER_BY_ENGINE.get(engine))
+    _, spec = resolve_converter(CONVERTER_BY_DRIVER.get(driver))
     log.info(
         "Found %d convertible non-.scenic file(s) in %s; writing .scenic twins "
         "in place using %s.",
@@ -346,7 +346,7 @@ def _ensure_scenic_twins(input_dir: Path, engine: Optional[str] = None) -> None:
 
     for src in convertible_files:
         dest = src.with_suffix(".scenic")
-        converted_path = _convert_to_scenic(src, dest, engine)
+        converted_path = _convert_to_scenic(src, dest, driver)
         if converted_path is None:
             log.warning("Could not convert %s - skipping.", src)
 
@@ -514,7 +514,7 @@ def _run_once_worker(
     max_steps: int,
     *,
     tool_name: str,
-    engine: str,
+    driver: str,
     address: str,
     port: int,
     timestep: float,
@@ -536,7 +536,7 @@ def _run_once_worker(
         world=None,  # filled in once the simulator connects
         client=None,
         tool=tool_name,
-        generation_id=engine,
+        generation_id=driver,
         scenario_id=scenario_id,
         run_index=run_index,
         output_dir=output_dir,
@@ -565,9 +565,9 @@ def _run_once_worker(
         )
 
         with contextlib.ExitStack() as stack:
-            if realtime and engine != "autoware":
+            if realtime and driver != "autoware":
                 stack.enter_context(_realtime_pacing(timestep))
-            if engine == "autoware":
+            if driver == "autoware":
                 from runner.autoware_session import (
                     AutowareSession,
                     autoware_ownership,
@@ -686,7 +686,7 @@ class ScenicCarlaRunner:
         self,
         output_dir: Path,
         tool_name: str = "ScenicRunner",
-        engine: str = "behavior_agent",
+        driver: str = "behavior_agent",
         address: str = "127.0.0.1",
         port: int = 2000,
         timestep: float = 0.05,
@@ -703,13 +703,13 @@ class ScenicCarlaRunner:
         allow_wsl_shutdown: bool = True,
         follow_camera: str = "",
     ):
-        if engine not in ("behavior_agent", "autoware"):
-            raise ValueError(f"Unknown engine: {engine}")
+        if driver not in ("behavior_agent", "autoware"):
+            raise ValueError(f"Unknown driver: {driver}")
 
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.tool_name = tool_name
-        self.engine = engine
+        self.driver = driver
         self.address = address
         self.port = port
         self.timestep = timestep
@@ -738,7 +738,7 @@ class ScenicCarlaRunner:
         self.carla_launch_args = shlex.split(carla_launch_args) if carla_launch_args else []
         self.carla_boot_timeout_s = carla_boot_timeout_s
         self._carla_proc: Optional[subprocess.Popen] = None
-        # --engine autoware: a CARLA crash also strands Autoware (its
+        # --driver autoware: a CARLA crash also strands Autoware (its
         # client hangs retrying a dead connection), so recovery has to be
         # paired. Without a map path we cannot relaunch it, and a crash
         # stays fatal - same contract as carla_exe.
@@ -872,7 +872,7 @@ class ScenicCarlaRunner:
             if verbose:
                 log.warning("pre-flight: CARLA is not reachable")
             return False
-        if self.engine != "autoware":
+        if self.driver != "autoware":
             return True
         if not self._autoware_alive():
             if verbose:
@@ -1115,7 +1115,7 @@ class ScenicCarlaRunner:
         fresh CARLA comes up on its default map, so Autoware's load is a
         genuine change.
         """
-        if self.engine == "autoware" and self.autoware_map_path is None:
+        if self.driver == "autoware" and self.autoware_map_path is None:
             raise RuntimeError(
                 "The environment needs restarting but no --autoware_map_path was "
                 "given, so Autoware cannot be relaunched. Restart both by hand."
@@ -1128,10 +1128,10 @@ class ScenicCarlaRunner:
             # one aborts the CARLA client library outright. Picked back up once
             # the environment is healthy again.
             self._stop_follow_camera()
-            if self.engine == "autoware":
+            if self.driver == "autoware":
                 self._kill_autoware()
             self._restart_carla_server()
-            if self.engine == "autoware":
+            if self.driver == "autoware":
                 self._start_autoware()
 
             if self.environment_healthy():
@@ -1141,7 +1141,7 @@ class ScenicCarlaRunner:
 
             # Duplicates survive a process restart - they live in DDS, not in
             # the processes - so the only cure is restarting the WSL VM.
-            if self.engine == "autoware" and self._duplicate_node_count() > 0:
+            if self.driver == "autoware" and self._duplicate_node_count() > 0:
                 if self.allow_wsl_shutdown:
                     log.warning(
                         "Stale DDS registrations persist; restarting the WSL VM "
@@ -1165,14 +1165,14 @@ class ScenicCarlaRunner:
         """Whether this scenario's map is the one Autoware is bound to.
 
         Autoware loads one map at launch and cannot change it, so a scenario on
-        any other map is unrunnable in this engine. Checked here, before the
+        any other map is unrunnable in this driver. Checked here, before the
         worker starts, because inside the worker it is already too late: a
         non-stock map goes down Scenic's raw-OpenDRIVE path, which rebuilds the
         world under Autoware, hangs the run and takes CARLA down with it.
 
         Mismatches are skipped rather than fatal, so a mixed-map suite still
         runs whatever it can - the rest remains available via
-        --engine behavior_agent.
+        --driver behavior_agent.
         """
         try:
             probe = carla.Client(self.address, self.port)
@@ -1186,7 +1186,7 @@ class ScenicCarlaRunner:
             log.warning(
                 "SKIPPING [%s]: it needs a non-stock map ingested as raw OpenDRIVE, "
                 "which would rebuild the world Autoware is attached to. "
-                "Autoware is running '%s'. Use --engine behavior_agent for this one.",
+                "Autoware is running '%s'. Use --driver behavior_agent for this one.",
                 scenario_id, current,
             )
             return False
@@ -1195,7 +1195,7 @@ class ScenicCarlaRunner:
             log.warning(
                 "SKIPPING [%s]: scenario map is '%s' but Autoware is running '%s'. "
                 "Relaunch Autoware with the matching map_path, or use "
-                "--engine behavior_agent.",
+                "--driver behavior_agent.",
                 scenario_id, carla_map, current,
             )
             return False
@@ -1210,7 +1210,7 @@ class ScenicCarlaRunner:
 
         carla_map, xodr_path = _carla_town_from_scenic(scenic_path)
 
-        if self.engine == "autoware":
+        if self.driver == "autoware":
             # Bring the environment up (or back up) before anything else. The
             # map check has to come after, because it is Autoware that loads
             # the scenario's map into CARLA - checking first would compare
@@ -1322,7 +1322,7 @@ class ScenicCarlaRunner:
             ),
             kwargs=dict(
                 tool_name=self.tool_name,
-                engine=self.engine,
+                driver=self.driver,
                 address=self.address,
                 port=self.port,
                 timestep=self.timestep,
@@ -1373,7 +1373,7 @@ class ScenicCarlaRunner:
 
     def run_directory(self, input_dir: Path, num_runs: int = 10) -> None:
         input_dir = Path(input_dir)
-        _ensure_scenic_twins(input_dir, self.engine)
+        _ensure_scenic_twins(input_dir, self.driver)
         scenic_files = sorted(input_dir.rglob("*.scenic"))
         if not scenic_files:
             raise FileNotFoundError(f"No .scenic file found in {input_dir}")

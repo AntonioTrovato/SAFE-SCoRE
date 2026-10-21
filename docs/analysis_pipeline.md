@@ -18,7 +18,7 @@ python -m src.analysis.run_analysis
 
 ## Research-question analyzers
 
-- **`rq1_hazard_effectiveness.py`** - compares residual-risk/criticality scores across tools (boxplots, a heatmap, and a text summary), using the `*_SOTIF_Final.csv` / `*_sotif_hazard_leaderboard.csv` outputs of Stage 1.
+- **`rq1_hazard_effectiveness.py`** - compares residual-risk/criticality scores across tools (boxplots, a heatmap, and a text summary), using the `*_final_hazard_report.csv` outputs of Stage 1 (the older `*_SOTIF_Final.csv` / `*_sotif_hazard_leaderboard.csv` names are still accepted).
 - **`rq2_diversity.py`** - loads per-scenario feature vectors (numeric dynamics/criticality metrics, extracted via `compute_feature_vectors.py`) across tools, and clusters them with UMAP + KMeans to discover behavioral "shapes" of scenarios. This is unsupervised: it doesn't know about named ODD values or triggering conditions.
 - **`rq2_coverage_entropy.py`** - given the clusters from `rq2_diversity.py`, computes per-tool coverage (fraction of discovered clusters touched) and normalized Shannon entropy (how evenly a tool's scenarios spread across those clusters). **This is different from** `src/analysis/odd_tc_coverage.py` (the Stage 1, STEP D module) - that one measures coverage/entropy over the *named* ODD values/TC categories declared in `config/sotif_odd_tc.yaml`, not over KMeans-discovered clusters. Both answer a "diversity" question, but over different axes.
 - **`rq2_event_percentage.py`** - per-hazard event percentages across tools, from the hazard leaderboard CSVs.

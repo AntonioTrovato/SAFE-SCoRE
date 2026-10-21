@@ -7,8 +7,8 @@ execution into SOTIF evidence: safety-criticality metrics, ODD and
 triggering-condition scoring, hazard and residual-risk estimates, and a report
 over the whole suite.
 
-The ego vehicle can be driven either by CARLA's built-in agent or by a real
-autonomous driving stack (**Autoware**), so the same scenario suite can be used
+The ego vehicle can be driven either by the behavior defined in the Scenic
+scenario or by a real autonomous driving stack (**Autoware**), so the same scenario suite can be used
 to evaluate an actual system under test.
 
 ---
@@ -44,7 +44,7 @@ generators is one possible use of the output, not the purpose of the tool.
 flowchart TD
     IN["<b>Scenario suite</b><br/>.scenic files<br/>(.xosc auto-converted)"]
     SAMP["<b>Sample</b><br/>one concrete scenario<br/>per execution"]
-    EXEC["<b>Execute in CARLA</b><br/>ego driven by<br/>behavior_agent or Autoware"]
+    EXEC["<b>Execute in CARLA</b><br/>ego driven by<br/>Scenic behavior or Autoware"]
     LOG[("<b>Base log</b><br/>one JSON per run<br/>frames · events · world_state")]
     ENR["<b>Enrich</b><br/>TTC · TET · MDBV<br/>route · dynamics"]
     ODD["<b>Score ODD + TCs</b><br/>driven by<br/>config/sotif_odd_tc.yaml"]
@@ -97,10 +97,12 @@ CSVs written into the run's output folder.
 
 | File | Contents |
 |---|---|
-| `SOTIF_Final.csv` | One row per scenario. For each of the 7 hazard types: **HR** (hazard rate), **R** (residual risk), **S** (severity). Plus `HR_avg`, `R_avg`, execution-time statistics per scenario (`T_exec_avg`, `_median`, `_min`, `_max`, `_p90`, `_p95`, `_p99`, wall-clock seconds over its runs). |
-| `sotif_hazard_leaderboard.csv` | Scenarios ranked by risk. For each hazard type: **P** (probability of occurrence), **S** (severity), **R** (residual risk = P × S). Flags each scenario via `is_non_acceptable` when any hazard's R exceeds that hazard's own `acceptance_threshold_<hazard>`. |
+| `final_hazard_report.csv` | One row per scenario. For each hazard type: **P** (probability of occurrence), **S** (severity), **R** (residual risk = P × S) and its `acceptance_threshold_<hazard>`. Flags the scenario via `is_non_acceptable` when any hazard's R exceeds that hazard's own threshold. |
+| `final_execution_time_report.csv` | One row per scenario: statistics of the wall-clock time of its executions, in seconds (`T_exec_avg`, `_median`, `_min`, `_max`, `_p90`, `_p95`, `_p99`). |
 | `odd_scores.csv` | Per run: the ODD values observed and the triggering conditions that fired. |
-| `odd_tc_coverage_{all,non_acceptable}.csv` | How much of the declared ODD/TC space the suite actually exercised: `declared_values` vs `observed_values`, `coverage`, and `entropy_norm` (how evenly the observed values were spread). The `non_acceptable` variant restricts this to scenarios that exceeded the risk threshold. |
+| `odd_coverage_entropy_final_report.csv` | One row per ODD factor: how much of its declared values the suite exercised (`declared_values`, `observed_values`, `coverage`) and how evenly the scenarios are spread over them (`entropy_norm`). |
+| `odd_coverage_detail_final_report.csv` | One row per declared value of each ODD factor: in how many scenarios (`num_scenarios`, `share_of_scenarios`) and executions (`num_executions`) it was observed. A count of 0 means not covered. |
+| `tc_coverage_detail_final_report.csv` | One row per declared triggering condition, with the same three counts, plus a last row `ALL_TCS` that summarizes all the TCs together (`declared_tcs`, `observed_tcs`, `coverage`, `entropy_norm`). |
 
 The 7 hazard types are: collision with pedestrian, collision with vehicle,
 collision with static object, red-light violation, stop-sign violation,
@@ -142,7 +144,7 @@ base log. Both are needed:
      without the key is read as 0 occurrences, so a typo in the name makes the
      hazard silently never fire.
 
-The column set of `SOTIF_Final.csv` and `sotif_hazard_leaderboard.csv` follows
+The column set of `final_hazard_report.csv` follows
 the YAML, so no further code change is needed.
 
 ---
@@ -154,11 +156,11 @@ the YAML, so no further code change is needed.
 | **Python** | 3.10 |
 | **OS** | Windows or Ubuntu 22.04 |
 | **CARLA** | 0.9.15 |
-| **Autoware** | 1.8.0 on ROS 2 Humble — *only for `--engine autoware`* |
+| **Autoware** | 1.8.0 on ROS 2 Humble — *only for `--driver autoware`* |
 | **Scenic** | 3.2.0b1, installed from source (see below) |
 | **GPU** | NVIDIA, for CARLA rendering |
 
-`--engine behavior_agent` needs only CARLA. Autoware and the bridge are needed
+`--driver behavior_agent` needs only CARLA. Autoware and the bridge are needed
 only to drive the ego with a real AD stack.
 
 ---
@@ -332,7 +334,8 @@ Run everything from the repository root, with the virtual environment active.
 
 ### Mode 1 — CARLA only
 
-The ego is driven by CARLA's built-in `behavior_agent`. Autoware is not
+The ego is driven by the behavior defined in the Scenic scenario (`--driver
+behavior_agent`, the default; no CARLA agent is involved). Autoware is not
 involved.
 
 **Step 1.** Start CARLA, or let SAFE-SCoRE start it (below).
@@ -405,7 +408,7 @@ Autoware itself. Make sure neither is already up.
 **Step 3.** Run the suite:
 
 ```bash
-python -m src.runner.run_experiment --input_dir scenic_example/suite --output_folder my_run --num_runs 10 --engine autoware --follow_camera behind --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" --carla_launch_args="-prefernvidia -quality-level=Low" --autoware_map_path /home/<your-linux-user>/autoware/autoware_map/Town05
+python -m src.runner.run_experiment --input_dir scenic_example/suite --output_folder my_run --num_runs 10 --driver autoware --follow_camera behind --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" --carla_launch_args="-prefernvidia -quality-level=Low" --autoware_map_path /home/<your-linux-user>/autoware/autoware_map/Town05
 ```
 
 > **Give `--autoware_map_path` as a literal Linux path.** Writing `"$HOME/..."`
@@ -437,12 +440,12 @@ Add `--all` instead to evaluate every folder under `outputs/`.
 | `--input_dir` | — | Folder of `.scenic` / `.xosc` scenarios (searched recursively) |
 | `--output_folder` | — | Results land in `outputs/<name>/` |
 | `--num_runs` | 10 | Executions per scenario |
-| `--engine` | `behavior_agent` | `behavior_agent` or `autoware` |
+| `--driver` | `behavior_agent` | Who drives the ego: `behavior_agent` (the behavior defined in the Scenic file) or `autoware` (an Autoware stack) |
 | `--max_run_attempts` | 5 | Retries of a failed run before the scenario is discarded |
 | `--max_wall_seconds` | 300 | Wall-clock cap per execution |
 | `--follow_camera` | off | `behind`, `top` or `front` — chase camera on the ego |
 | `--carla_exe` | — | Let SAFE-SCoRE manage the CARLA server |
-| `--autoware_map_path` | — | Map for Autoware; required for `--engine autoware` |
+| `--autoware_map_path` | — | Map for Autoware; required for `--driver autoware` |
 | `--skip_enrichment` | off | Execute scenarios only, skip the evaluation half |
 
 ### Watching a run
@@ -470,7 +473,7 @@ When either side fails, SAFE-SCoRE:
 4. Discards the scenario if the attempts are exhausted, and moves to the next.
 
 A summary of completed and discarded scenarios is printed at the end. The same
-policy applies in both engine modes.
+policy applies in both driver modes.
 
 ---
 
@@ -482,16 +485,17 @@ touches no other result folder:
 ```
 outputs/my_run/
   <scenario>_run_01_log_basic.json     one per execution, enriched in place
-  SOTIF_Final.csv
-  sotif_hazard_leaderboard.csv
+  final_hazard_report.csv
+  final_execution_time_report.csv
   odd_scores.csv
-  odd_tc_coverage_all.csv
-  odd_tc_coverage_non_acceptable.csv
+  odd_coverage_entropy_final_report.csv
+  odd_coverage_detail_final_report.csv
+  tc_coverage_detail_final_report.csv
 ```
 
 The log schema is documented in [docs/base_log_json.md](docs/base_log_json.md).
 
-With `--engine autoware`, the ROS 2 logs of Autoware are kept too, under
+With `--driver autoware`, the ROS 2 logs of Autoware are kept too, under
 `outputs/<output_folder>/autoware_logs/`:
 
 ```

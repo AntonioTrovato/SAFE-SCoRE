@@ -14,7 +14,7 @@ This simplified structure can be used as a reference for developers integrating 
   "map_name": "Town10HD_Opt",
   "run_index": 1,
   "start_time": "2026-02-01_12-52-22",
-  "simulation_start_time": 1769946742.7628,
+  "wall_clock_start_epoch": 1769946742.7628,
   "delta_time": 0.05,
   "results": {
     "has_collision": true,
@@ -33,7 +33,7 @@ This simplified structure can be used as a reference for developers integrating 
       "off_road": 2
     },
     "total_frames": 1577,
-    "total_simulation_time": 60.008,
+    "total_wall_clock_time": 60.008,
     "simulated_time": 236.4,
     "events": {
       "collision": [
