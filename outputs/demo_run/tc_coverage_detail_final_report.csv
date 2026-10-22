@@ -1,0 +1,11 @@
+tc,num_scenarios,share_of_scenarios,num_executions,declared_tcs,observed_tcs,coverage,entropy_norm
+adverse_weather,2,0.6667,2,,,,
+low_visibility_time,3,1.0,4,,,,
+low_friction_surface,2,0.6667,4,,,,
+combined_environment_challenge,1,0.3333,1,,,,
+high_traffic_density,0,0.0,0,,,,
+mixed_actor_interaction,0,0.0,0,,,,
+near_miss_distance,3,1.0,4,,,,
+critical_ttc,3,1.0,7,,,,
+high_speed_approach,0,0.0,0,,,,
+ALL_TCS,3,1.0,7,9,6,0.6667,0.7895

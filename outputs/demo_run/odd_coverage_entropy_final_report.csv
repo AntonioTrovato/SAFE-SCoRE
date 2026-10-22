@@ -1,0 +1,8 @@
+factor,declared_values,observed_values,coverage,entropy_norm,num_scenarios
+weather,5,4,0.8,0.8262,3
+time_of_day,6,2,0.3333,0.3756,3
+road_condition,4,2,0.5,0.4855,3
+traffic_density,3,2,0.6667,0.5794,3
+pedestrian_density,3,1,0.3333,0.0,3
+operational_speed,3,1,0.3333,0.0,3
+mission_duration,3,1,0.3333,0.0,3
