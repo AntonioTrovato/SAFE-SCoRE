@@ -4,6 +4,8 @@ How the SAFE-SCoRE code is organized and how its parts interact. For what the to
 
 ## Overview
 
+![Architecture of SAFE-SCoRE](docs/imgs/safe_score_architecture.png)
+
 SAFE-SCoRE has two stages that communicate only through **base logs** (one JSON file per scenario execution):
 
 - **Execution stage** (`src/runner/`, `src/data_gathering/`): executes Scenic scenarios on CARLA and writes the base logs. Components: Runner and Recorder.

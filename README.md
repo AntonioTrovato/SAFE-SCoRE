@@ -1,5 +1,7 @@
 # SAFE-SCoRE: a SOTIF-Aligned Framework for the Evaluation of Scenario Coverage of Risks and their Efficiency
 
+![Overview of the SAFE-SCoRE workflow](docs/imgs/screenshot.png)
+
 SAFE-SCoRE executes a suite of [Scenic](https://scenic-lang.readthedocs.io) driving scenarios in the
 [CARLA](https://carla.org) simulator and turns every execution into evidence aligned with
 [ISO 21448 (SOTIF)](https://www.iso.org/standard/77490.html): the residual risk of each known
@@ -8,6 +10,8 @@ factors and triggering conditions (TCs) of the whole suite.
 
 The ego vehicle is driven either by the behavior written in the Scenic scenario or by the
 [Autoware](https://autoware.org) autonomous driving stack, so the same suite can evaluate an actual system under test.
+
+A walkthrough video is available [here](https://youtu.be/eupKd7sjudQ).
 
 ---
 
@@ -302,7 +306,7 @@ grep -n "launch/autoware_carla_interface.launch.xml" ~/autoware/src/launcher/aut
 ```
 
 The third line shows the Windows host IP the bridge connects to. WSL2 can change it after a reboot: see
-[docs/DAILY_PROCEDURE.md](docs/DAILY_PROCEDURE.md), Step 3.
+[docs/DAILY_PROCEDURE.md](docs/DAILY_PROCEDURE.md), Step 2.
 
 ### Step 5 — Check Mode 2
 
@@ -619,6 +623,6 @@ The columns of `final_hazard_report.csv` follow the YAML; no other change is nee
 | [docs/enrichment.md](docs/enrichment.md) | How each metric, ODD value and triggering condition is computed |
 | [docs/base_log_json.md](docs/base_log_json.md) | Execution log schema |
 | [docs/integration.md](docs/integration.md) | Feeding the logs of another tool into the evaluation |
-| [docs/DAILY_PROCEDURE.md](docs/DAILY_PROCEDURE.md) | Starting and stopping CARLA and Autoware by hand |
+| [docs/DAILY_PROCEDURE.md](docs/DAILY_PROCEDURE.md) | What to do at the start and end of each Mode 2 session |
 | [docs/KNOWN_INSTABILITIES.md](docs/KNOWN_INSTABILITIES.md) | CARLA and Autoware failure modes, with evidence |
 | [docs/LESSONS_LEARNED.md](docs/LESSONS_LEARNED.md) | What the failures taught about integrating Scenic, CARLA and Autoware |

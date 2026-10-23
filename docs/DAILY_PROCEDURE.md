@@ -1,12 +1,6 @@
-# Daily procedure — CARLA + Autoware
+# Daily procedure — running Mode 2 (CARLA + Autoware)
 
-Starting and stopping the environment by hand, once it is installed.
-
-> **You may not need this.** `python -m src.runner.run_experiment --driver autoware`,
-> given `--carla_exe` and `--autoware_map_path`, starts CARLA and Autoware itself,
-> checks them, and restarts them on a crash.
-> This procedure is for driving the stack manually — debugging, demos, or
-> exploring in RViz.
+What to do at the start and at the end of each working session, once SAFE-SCoRE, CARLA and Autoware are installed (README, Installation). SAFE-SCoRE starts, checks and restarts CARLA and Autoware itself, so you never launch them: you only prepare the machine, then run the command.
 
 `[WIN]` = Windows PowerShell · `[WSL]` = Ubuntu terminal in WSL2
 
@@ -22,7 +16,7 @@ This table is why some steps below are conditional.
 | `~/cyclonedds.xml`, maps | survives | survives | survives | survives |
 | Autoware `build/` + `install/` | survives | survives | survives | **lost — full rebuild** |
 | TensorRT engines (`~/autoware_data`) | survives | survives | survives | survives |
-| Source patches (host IP, `/launch/` path, tick) | survives | survives | survives | **lost — reapply** |
+| Source patches (host IP, `/launch/` path, tick, `max_vel`) | survives | survives | survives | **lost — reapply** |
 | `sysctl` + `lo multicast` | **lost** | **lost** | **lost** | n/a |
 | Windows host IP value | usually same | **can change** | **can change** | n/a |
 
@@ -31,34 +25,45 @@ close every Ubuntu terminal and leave it idle for a few minutes** — WSL2
 auto-stops the VM. That last one catches people out: closing all terminals is
 not harmless.
 
-When in doubt, do the full cold start. Steps 3–5 are cheap and safe to repeat.
+When in doubt, do all the steps below. They are cheap and safe to repeat.
 
 ---
 
-## Cold start
+## Start of the session
 
 ### 1. Check for leftovers `[WIN]`
 
+Two CARLA servers on port 2000 is a failure mode that looks like everything working, so nothing of a previous session may be running.
+
 ```powershell
-Get-Process CarlaUE4* -ErrorAction SilentlyContinue
+Get-Process CarlaUE4*,CrashReportClient -ErrorAction SilentlyContinue
 ```
 
-Anything listed must be stopped first — two CARLA servers on port 2000 is a
-failure mode that looks like everything working.
+Anything listed must be stopped:
 
 ```powershell
 Get-Process CarlaUE4*,CrashReportClient -ErrorAction SilentlyContinue | Stop-Process -Force
 ```
 
-### 2. Start CARLA `[WIN]`
+Then check that no Autoware is left in WSL `[WSL]`. The result must be `0`:
 
-```powershell
-& "<CARLA_PATH>\CarlaUE4.exe" -prefernvidia -quality-level=Low
+```bash
+ps -eo comm --no-headers | grep -c component_container
 ```
 
-Wait until the window has finished loading before continuing.
+If it is not, stop it cleanly with `Ctrl+C` in the terminal that launched it. Only if there is none, force it:
 
-### 3. Check the Windows host IP `[WSL]`
+```bash
+pkill -9 -f '[c]omponent_container'; pkill -9 -f '[r]viz2'
+```
+
+> The bracket around the first letter is deliberate — it stops the pattern
+> matching the shell that is running it, which otherwise reports processes that
+> do not exist.
+
+Force-killing Autoware leaves stale DDS node registrations behind, and on the next start its duplicate-node checker refuses autonomous mode permanently — curable only by `wsl --shutdown`. See [KNOWN_INSTABILITIES.md](KNOWN_INSTABILITIES.md) §2.5.
+
+### 2. Check the Windows host IP `[WSL]`
 
 WSL2 reaches Windows on a virtual adapter whose address **can change after a
 reboot**. Compare the live value with what the bridge is configured to use:
@@ -86,7 +91,7 @@ rebuild just that package:
 cd ~/autoware && colcon build --packages-select autoware_carla_interface
 ```
 
-### 4. Kernel and network settings `[WSL]`
+### 3. Kernel and network settings `[WSL]`
 
 **Lost on every WSL restart.** Asks for your sudo password.
 
@@ -109,7 +114,7 @@ sudo sysctl -w net.ipv4.ipfrag_time=3
 sudo sysctl -w net.ipv4.ipfrag_high_thresh=134217728
 ```
 
-**Keep this terminal open for the rest of the session** — if every Ubuntu
+**Keep this terminal open for the whole session** — if every Ubuntu
 terminal closes, the VM stops and these settings are lost.
 
 Verify — if `rmem_max` still reads `212992`, they did not apply:
@@ -118,75 +123,23 @@ Verify — if `rmem_max` still reads `212992`, they did not apply:
 sysctl net.core.rmem_max net.ipv4.ipfrag_time net.ipv4.ipfrag_high_thresh
 ```
 
-### 5. Confirm CARLA is reachable `[WSL]`
+### 4. Run `[WIN]`
 
-Five seconds here beats launching the whole stack blind.
+From the repository root, with the virtual environment active. SAFE-SCoRE starts CARLA and Autoware (RViz opens by itself), runs the suite, and stops them at the end:
 
-```bash
-timeout 3 bash -c "</dev/tcp/$(ip route show default | awk '{print $3}')/2000" && echo OK || echo BLOCKED
+```powershell
+python -m src.runner.run_experiment --input_dir scenic_example/suite --output_folder my_run --num_runs 10 --driver autoware --follow_camera behind --carla_exe "C:\path\to\CARLA_0.9.15\WindowsNoEditor\CarlaUE4.exe" --carla_launch_args="-prefernvidia -quality-level=Low" --autoware_map_path /home/<your-linux-user>/autoware/autoware_map/Town05
 ```
 
-`BLOCKED` means CARLA has not finished loading (wait and retry) or a firewall is
-in the way.
-
-### 6. Launch Autoware `[WSL]`
-
-```bash
-cd ~/autoware && source install/setup.bash && ros2 launch autoware_launch e2e_simulator.launch.xml map_path:=$HOME/autoware/autoware_map/Town05 vehicle_model:=sample_vehicle sensor_model:=carla_sensor_kit simulator_type:=carla
-```
-
-RViz opens after 10–30 s. **Leave this terminal running — it is the whole
-stack.**
-
-> If you exported `CARLA_EXTERNAL_TICK=1`, Autoware will start, print little,
-> and spawn no ego until something ticks CARLA. That is expected: with the tick
-> patch active, Autoware cannot complete its own startup unaided.
-
-### 7. Drive it from RViz
-
-1. **Localization** panel → *Init by GNSS*, until the status reads `INITIALIZED`
-2. **2D Goal Pose** → click and drag on the map to set a destination; a route
-   appears
-3. **AUTO** → the car drives
+The options are described in the README (Running).
 
 ---
 
-## Shutdown
+## End of the session
 
-**Order matters, and a clean stop matters.**
+SAFE-SCoRE stops CARLA and Autoware when the suite ends. If you interrupted it, or it crashed, check as in Start, step 1 that nothing is left. Prefer a clean `Ctrl+C` to a kill for Autoware.
 
-### 1. Stop Autoware `[WSL]`
-
-Press `Ctrl+C` in the launch terminal and let it finish.
-
-Do **not** skip straight to killing it. Force-killing Autoware leaves stale DDS
-node registrations behind, and on the next start its duplicate-node checker
-refuses autonomous mode permanently — curable only by `wsl --shutdown`. See
-[KNOWN_INSTABILITIES.md](KNOWN_INSTABILITIES.md) §2.5.
-
-Confirm nothing survived:
-
-```bash
-ps -eo comm --no-headers | grep -c component_container
-```
-
-Only if that is non-zero:
-
-```bash
-pkill -9 -f '[c]omponent_container'; pkill -9 -f '[r]viz2'
-```
-
-> The bracket around the first letter is deliberate — it stops the pattern
-> matching the shell that is running it, which otherwise reports processes that
-> do not exist.
-
-### 2. Stop CARLA `[WIN]`
-
-```powershell
-Get-Process CarlaUE4*,CrashReportClient -ErrorAction SilentlyContinue | Stop-Process -Force
-```
-
-### 3. Release the machine `[WIN]` — only if others need the RAM
+To release the machine, only if others need the RAM `[WIN]`:
 
 ```powershell
 wsl --shutdown
@@ -194,30 +147,20 @@ wsl --shutdown
 
 ---
 
-## Restarting soon after
-
-If the WSL VM never stopped (an Ubuntu terminal stayed open), you can skip
-steps 3 and 4 — the IP and sysctl settings are still in place. Everything else
-is the same.
-
-If every terminal was closed, assume the VM stopped and do the full cold start.
-
----
-
 ## Diagnostics
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| CARLA window frozen, "Not Responding" | Nobody is ticking it — in synchronous mode the world only advances on a tick | Not a crash. Check whether the client that owns the clock is still alive |
-| Autoware starts, no car appears | `CARLA_EXTERNAL_TICK=1` with nothing ticking | Expected; something must tick CARLA |
-| AUTO greyed out | No route, localization not converged, vehicle not stopped, or stale DDS nodes | Check the RViz panels in order; if all look right, `wsl --shutdown` |
-| Bridge exits immediately | CARLA died underneath it | Restart **both** |
-| `FileNotFoundError` on launch | The `/launch/` include-path patch is missing | Reapply (README, Part 1) |
-| Nothing connects, no errors | Host IP changed | Redo step 3 |
+| `pre-flight: Autoware nodes are missing`, repeated | The kernel settings are lost (WSL restarted), or Autoware cannot start | Redo step 3, then launch Autoware by hand once to read the real error (README, Mode 2) |
+| Nothing connects, no errors | Host IP changed | Redo step 2 |
+| `FileNotFoundError` on Autoware launch | The `/launch/` include-path patch is missing | Reapply (README, Step 4.3) |
+| Autonomous mode never available, localization and routing look fine | Stale DDS registrations | `wsl --shutdown`, then redo steps 3 and 4 |
+| CARLA window frozen, "Not Responding" | Nobody is ticking it — in synchronous mode the world only advances on a tick | Not a crash. Check whether the client that owns the clock (the runner) is still alive |
+| Bridge exits immediately | CARLA died underneath it | SAFE-SCoRE restarts **both** by itself |
 
 A CARLA that answers a client is healthy, however frozen its window looks:
 
-```bash
+```powershell
 python -c "import carla; print(carla.Client('127.0.0.1',2000).get_server_version())"
 ```
 
