@@ -1,313 +1,174 @@
-# Integration Guide
+# Integration guide
 
-## Overview
+How to make another CARLA-based tool produce execution logs that the SAFE-SCoRE evaluation can process. If your scenarios are Scenic scenarios, use the Runner instead (see the [README](../README.md)): it already does everything below.
 
-This document explains how to integrate the logging modules into a CARLA-based scenario generator so that each executed scenario produces a JSON log compatible with the project pipelines.
+The integration uses two modules of `src/data_gathering/`:
 
-The integration is based on two core modules:
+- `carlaBasicLogger.py` (`CarlaBasicLogger`, `LOGGER_REGISTRY`): builds and saves the log of one execution.
+- `violationMonitor.py` (`ViolationMonitor`): detects red-light, stop-sign, speeding and off-road events at every frame and reports them to the logger.
 
-- `carlaBasicLogger.py`
-- `violationMonitor.py`
+`src/runner/recorder.py` is a working example of the same wiring.
 
-Once integrated, each scenario execution produces a **base log** (`*_log_basic.json`) that can later be processed by the SOTIF and analysis pipelines.
+## Requirements on your tool
 
----
+- The CARLA world runs in **synchronous mode with a fixed time step** (`synchronous_mode = True`, `fixed_delta_seconds > 0`). `ViolationMonitor` derives its frame rate from it.
+- The logger is updated **once per simulation tick**, from the thread that ticks.
+- One logger per execution; the ego vehicle is a `carla.Vehicle`.
 
-## Goal of the integration
+## Steps
 
-The purpose of this integration is to ensure that every generated scenario is executed in CARLA with a uniform data collection mechanism.  
-The resulting log contains:
+### 1. Make the modules importable
 
-- scenario metadata;
-- mission information for the ego vehicle;
-- frame-by-frame state of the ego and surrounding dynamic actors;
-- safety-relevant events such as:
-  - collisions,
-  - red-light violations,
-  - speeding,
-  - stop-sign violations,
-  - off-road events.
-
-These logs are the input expected by the downstream processing pipeline.
-
----
-
-## Required modules
-
-The two modules live at `src/data_gathering/carlaBasicLogger.py` and `src/data_gathering/violationMonitor.py` in this repository. Copy them into the scenario generator source tree, or make them importable from your runtime environment.
-
-At minimum, the following modules must be available:
+`carlaBasicLogger.py` imports `utils.carla_help`, so both `src/` and the repository root must be on `sys.path`:
 
 ```python
-from carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
-from violationMonitor import ViolationMonitor
+import sys
+sys.path.insert(0, "/path/to/SAFE-SCoRE/src")
+
+from data_gathering.carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
+from data_gathering.violationMonitor import ViolationMonitor
 ```
 
-If your project uses a package structure, adapt the import paths accordingly.
-
-## Integration steps
-### 1. Import the logger modules
-In the script responsible for scenario creation and execution, import the logger and the violation monitor:
-
-```python
-from carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
-from violationMonitor import ViolationMonitor
-```
-
-### 2. Instantiate the logger
-Create one CarlaBasicLogger instance for each scenario execution.
-
+### 2. Create the logger, once per execution
 
 ```python
 logger = CarlaBasicLogger(
-    tool="YourToolName",
-    generation_id=generation_id,
+    tool="YourTool",
+    generation_id="gen_0001",
     scenario_id=scenario_id,
-    output_dir=output_dir,
+    output_dir="outputs/YourTool",
     world=world,
     client=client,
-    record_binary=True,
-    run_index=run_index
+    record_binary=False,      # True also stores CARLA's binary recording next to the log
+    run_index=run_index,
 )
 ```
 
-### 3. Register the ego vehicle
-Immediately after the ego vehicle is spawned, register it in the logger.
+`output_dir` is the dataset folder that the evaluation will process.
+
+### 3. Register the ego, attach the violation monitor
+
+Right after the ego is spawned:
 
 ```python
-snapshot = world.get_snapshot()
-logger.register_ego_actor(ego_vehicle=ego_vehicle, snapshot=snapshot)
+logger.register_ego_actor(ego_vehicle=ego_vehicle, snapshot=world.get_snapshot())
+
+LOGGER_REGISTRY[ego_vehicle.id] = logger      # collision callbacks find the logger here
+logger.violation_monitor = ViolationMonitor(ego_vehicle=ego_vehicle, logger=logger)
 ```
 
-This stores the static identity of the ego actor in the log.
-
-### 4. Register the ego mission
-If your ego controller exposes route and destination information, store the mission as soon as it becomes available.
+### 4. Forward the sensor events
 
 ```python
-logger.set_mission_from_agent(
-    ego_agent=ego_agent,
-    ego_sp=ego_start_point,
-    ego_dp=ego_destination_point
-)
+collision_sensor.listen(lambda event: CarlaBasicLogger.handle_collision(event, {}))
 ```
 
-*Important note*
+`collision_sensor` is a `sensor.other.collision` attached to the ego. The second argument is a tool-specific state object; pass `{}` if there is none. Lane invasions and off-road are optional: for lane invasion, attach a `sensor.other.lane_invasion` and call `logger.log_lane_invasion(frame, timestamp, crossed_markings)` from its callback (see `_first_time_setup()` in `src/runner/recorder.py`); off-road is detected by the monitor.
 
-The current implementation is designed around a BehaviorAgent-style interface.
-If your generator uses a different controller abstraction, you may need to adapt the mission extraction logic.
+### 5. Record the world state
 
-### 5. Create and attach the violation monitor
-Instantiate the ViolationMonitor and attach it to the logger.
+The ODD and TC evaluation reads the `world_state` block. Set it once, at the start of the execution:
 
 ```python
-LOGGER_REGISTRY[ego_vehicle.id] = logger
-
-violation_monitor = ViolationMonitor(
-    ego_vehicle=ego_vehicle,
-    logger=logger
-)
-
-logger.violation_monitor = violation_monitor
+weather = world.get_weather()
+logger.scenario_data["world_state"] = {
+    "map_name": world.get_map().name.split("/")[-1],
+    "cloudiness": weather.cloudiness,
+    "precipitation": weather.precipitation,
+    "precipitation_deposits": weather.precipitation_deposits,
+    "wetness": weather.wetness,
+    "wind_intensity": weather.wind_intensity,
+    "fog_density": weather.fog_density,
+    "sun_altitude_angle": weather.sun_altitude_angle,
+    "num_npc_vehicles": n_vehicles_without_ego,
+    "num_pedestrians": n_pedestrians,
+    "ego_speed_limit_kmh": ego_vehicle.get_speed_limit(),
+    "mission_timeout_s": scenario_duration_s,
+}
 ```
 
-This step is required because:
- - the logger uses the monitor during frame updates;
- - collision callbacks resolve the correct logger through LOGGER_REGISTRY.
+`snapshot_world_state()` in `src/runner/recorder.py` builds the same dictionary. A missing field falls back to a default or to `unknown`, which distorts the ODD values: provide all of them. Your own ODD factors may use other fields ([enrichment.md](enrichment.md)).
 
+### 6. Optional: the mission
 
-### 6. Attach collision handling
+If your ego controller exposes a route, `logger.set_mission_from_agent(ego_agent, ego_sp, ego_dp)` stores it (written for a CARLA `BehaviorAgent`-style interface; adapt it for other controllers). It only feeds the functional metrics, which no report uses.
 
-Collision events must be forwarded to the logger through the static callback.
-
-```python
-collision_sensor.listen(
-    lambda event: CarlaBasicLogger.handle_collision(event, state)
-)
-```
-
-*Notes*
-
-- state is the scenario/tool state object already used by the generator, if any.
-- The collision callback internally resolves the logger associated with the ego vehicle.
-- If your tool does not require a custom state object, you can pass an empty dictionary:
+### 7. Update the logger at every tick
 
 ```python
-collision_sensor.listen(
-    lambda event: CarlaBasicLogger.handle_collision(event, {})
-)
-```
-
-### 7. Update the logger at every simulation tick
-
-Inside the main simulation loop, update the logger once per frame.
-
-```python
-while simulation_running:
+while running:
     world.tick()
-    snapshot = world.get_snapshot()
-
-    logger.update_frame(
-        world=world,
-        ego_vehicle=ego_vehicle,
-        snapshot=snapshot
-    )
-
-    # scenario logic here
+    logger.update_frame(world=world, ego_vehicle=ego_vehicle, snapshot=world.get_snapshot())
 ```
 
-This step is mandatory because it performs both:
- - frame-by-frame logging of the scene;
- - violation monitoring through the attached ViolationMonitor.
+This logs the frame and runs the violation monitor.
 
-### 8. Finalize and save the log
-At the end of the scenario execution, always finalize the logger and save the output JSON.
+### 8. Finalize on every exit path
 
 ```python
-logger.finalize_and_save()
+logger.finalize_and_save(filename=f"{scenario_id}_run_{run_index:02d}_log_basic.json")
 ```
 
-This should be done:
- - at normal scenario termination;
- - in early-stop conditions;
- - in exception-safe cleanup blocks whenever possible.
+Call it at normal termination, on early stops and in exception cleanup. At least one frame must have been logged. **The file name matters:** the evaluation steps that compute hazards, execution times and coverage select files named `<scenario_id>_run_<NN>_log_basic.json`; with the default name (`<generation_id>_<scenario_id>_log_basic.json`) only the metrics and ODD steps would see the log. Several runs of the same scenario share `scenario_id` and differ in `NN`.
 
-## Minimal integration example
+## Minimal example
 
 ```python
+import sys
 import carla
+sys.path.insert(0, "/path/to/SAFE-SCoRE/src")
+from data_gathering.carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
+from data_gathering.violationMonitor import ViolationMonitor
 
-from carlaBasicLogger import CarlaBasicLogger, LOGGER_REGISTRY
-from violationMonitor import ViolationMonitor
-
-# --------------------------------------------------
-# Connect to CARLA
-# --------------------------------------------------
 client = carla.Client("localhost", 2000)
 client.set_timeout(10.0)
 world = client.get_world()
+settings = world.get_settings()
+settings.synchronous_mode = True
+settings.fixed_delta_seconds = 0.05
+world.apply_settings(settings)
 
-# --------------------------------------------------
-# Spawn ego vehicle
-# --------------------------------------------------
-blueprint_library = world.get_blueprint_library()
-vehicle_bp = blueprint_library.find("vehicle.tesla.model3")
-spawn_point = world.get_map().get_spawn_points()[0]
+bp_lib = world.get_blueprint_library()
+ego = world.spawn_actor(bp_lib.find("vehicle.tesla.model3"), world.get_map().get_spawn_points()[0])
 
-ego_vehicle = world.spawn_actor(vehicle_bp, spawn_point)
+scenario_id, run_index = "scenario_0001", 1
+logger = CarlaBasicLogger(tool="ExampleTool", generation_id="gen_0001", scenario_id=scenario_id,
+                          output_dir="outputs/ExampleTool", world=world, client=client, run_index=run_index)
+logger.register_ego_actor(ego_vehicle=ego, snapshot=world.get_snapshot())
+LOGGER_REGISTRY[ego.id] = logger
+logger.violation_monitor = ViolationMonitor(ego_vehicle=ego, logger=logger)
 
-# --------------------------------------------------
-# Example metadata
-# --------------------------------------------------
-tool_name = "ExampleGenerator"
-generation_id = "gen_0001"
-scenario_id = "scenario_0001"
-run_index = 1
-output_dir = "outputs/ExampleGenerator"
+weather = world.get_weather()
+logger.scenario_data["world_state"] = {
+    "map_name": world.get_map().name.split("/")[-1],
+    "cloudiness": weather.cloudiness, "precipitation": weather.precipitation,
+    "precipitation_deposits": weather.precipitation_deposits, "wetness": weather.wetness,
+    "wind_intensity": weather.wind_intensity, "fog_density": weather.fog_density,
+    "sun_altitude_angle": weather.sun_altitude_angle,
+    "num_npc_vehicles": 0, "num_pedestrians": 0,
+    "ego_speed_limit_kmh": ego.get_speed_limit(), "mission_timeout_s": 25.0,
+}
 
-# --------------------------------------------------
-# Instantiate logger
-# --------------------------------------------------
-logger = CarlaBasicLogger(
-    tool=tool_name,
-    generation_id=generation_id,
-    scenario_id=scenario_id,
-    output_dir=output_dir,
-    world=world,
-    client=client,
-    record_binary=True,
-    run_index=run_index
-)
+collision_sensor = world.spawn_actor(bp_lib.find("sensor.other.collision"), carla.Transform(), attach_to=ego)
+collision_sensor.listen(lambda event: CarlaBasicLogger.handle_collision(event, {}))
 
-# --------------------------------------------------
-# Register ego
-# --------------------------------------------------
-snapshot = world.get_snapshot()
-logger.register_ego_actor(ego_vehicle=ego_vehicle, snapshot=snapshot)
-
-# --------------------------------------------------
-# Optional: register mission if an agent is available
-# --------------------------------------------------
-# logger.set_mission_from_agent(
-#     ego_agent=ego_agent,
-#     ego_sp=ego_start_point,
-#     ego_dp=ego_destination_point
-# )
-
-# --------------------------------------------------
-# Attach violation monitor
-# --------------------------------------------------
-LOGGER_REGISTRY[ego_vehicle.id] = logger
-
-violation_monitor = ViolationMonitor(
-    ego_vehicle=ego_vehicle,
-    logger=logger
-)
-logger.violation_monitor = violation_monitor
-
-# --------------------------------------------------
-# Collision sensor
-# --------------------------------------------------
-collision_bp = blueprint_library.find("sensor.other.collision")
-collision_sensor = world.spawn_actor(
-    collision_bp,
-    carla.Transform(),
-    attach_to=ego_vehicle
-)
-
-collision_sensor.listen(
-    lambda event: CarlaBasicLogger.handle_collision(event, {})
-)
-
-# --------------------------------------------------
-# Main simulation loop
-# --------------------------------------------------
 try:
     for _ in range(500):
+        # your scenario logic here (control the ego, move the NPCs)
         world.tick()
-        snapshot = world.get_snapshot()
-
-        logger.update_frame(
-            world=world,
-            ego_vehicle=ego_vehicle,
-            snapshot=snapshot
-        )
-
-        # your scenario execution logic here
-
+        logger.update_frame(world=world, ego_vehicle=ego, snapshot=world.get_snapshot())
 finally:
-    logger.finalize_and_save()
+    logger.finalize_and_save(filename=f"{scenario_id}_run_{run_index:02d}_log_basic.json")
     collision_sensor.destroy()
-    ego_vehicle.destroy()
+    ego.destroy()
 ```
 
-### Expected output
-The logger saves one JSON file per scenario execution.
+## Evaluate
 
-For most tools, the default filename pattern is:
+With the logs of all your executions in `outputs/<name>/` (run from the repository root, with the virtual environment active):
 
-```text
-<generation_id>_<scenario_id>_log_basic.json
-```
-A tool may override this convention if needed, but the produced file must remain a base log compatible with the downstream pipeline.
-
-
-### Output directory recommendation
-To simplify downstream processing, it is recommended to save logs directly inside the dataset folder associated with the generator, for example:
-
-```text
-outputs/
-└── YourToolName/
-    ├── gen_0001_sc_0001_log_basic.json
-    ├── gen_0001_sc_0002_log_basic.json
-    └── ...
+```bash
+python -m src.pipeline.run_pipeline --output_folder <name>
 ```
 
-This is consistent with the pipeline expectation that dataset directories contain base logs ready for enrichment and analysis.
-
-## Next step
-Once the base logs have been generated, they can be processed through the project pipelines (run from the repository root):
- 1. Run the SOTIF pipeline on your dataset folder: `python -m src.pipeline.run_pipeline --output_folder <name>` (the folder under `outputs/` holding your logs)
- 2. Optionally, the cross-suite analysis (future work, not part of the SOTIF pipeline): `python -m src.analysis.run_analysis`
-
-If your generator is Scenic-based, consider using `src/runner/` (see the main `README.md`) instead of this manual integration - it already wires up `CarlaBasicLogger`/`ViolationMonitor` for you.
+The reports are written next to the logs and are described in the README (Output). The log schema is in [base_log_json.md](base_log_json.md).

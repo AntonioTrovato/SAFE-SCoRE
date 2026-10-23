@@ -350,8 +350,7 @@ def get_speed_mps(ego_vehicle: carla.Vehicle):
     return math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2)
 
 def get_speed_kmh(ego_vehicle: carla.Vehicle):
-    velocity = ego_vehicle.get_velocity()
-    return math.sqrt(velocity.x ** 2 + velocity.y ** 2 + velocity.z ** 2)
+    return get_speed_mps(ego_vehicle) * 3.6
 
 FOLLOW = 6
 

@@ -74,7 +74,7 @@ unique names**, each duplicate appearing four times. Autoware's
 `duplicated_node_checker` then reports ERROR and **blocks autonomous mode
 permanently** - while localization and routing still show green.
 
-Our `config/cyclonedds.xml` makes it worse: `<ParticipantIndex>none</ParticipantIndex>`
+Our `~/cyclonedds.xml` (in WSL) makes it worse: `<ParticipantIndex>none</ParticipantIndex>`
 is a *Jazzy* workaround, and on Humble it lets dead participants linger.
 
 - Shut Autoware down with `Ctrl+C` (or SIGINT) and **wait** for it.
@@ -87,9 +87,8 @@ is a *Jazzy* workaround, and on Humble it lets dead participants linger.
 ## 4. Never restart Autoware against a live CARLA
 
 Autoware's startup calls `client.load_world(<map>)`. **Reloading the map CARLA
-is already running is the known UE4 access violation** - the same engine bug
-this repo already documents for repeated map reloads. Restarting Autoware alone
-therefore reliably kills CARLA.
+is already running is a known UE4 access violation** (KNOWN_INSTABILITIES §1.3).
+Restarting Autoware alone therefore reliably kills CARLA.
 
 Always restart **both**, CARLA first, so it comes up on its default map and
 Autoware's load is a genuine map change. There is deliberately no
@@ -184,7 +183,8 @@ physically moves the CARLA actor. Two consequences:
 In CARLA 0.9.15, Town05 dies within a couple of ticks with **five or more RGB
 cameras**, independent of resolution - four at 1600x900 are fine, five at
 640x360 are not. `carla_sensor_kit` enables six, so `enabled_sensors` in the
-bridge's `config/sensor_mapping.yaml` must be trimmed.
+bridge's `config/sensor_mapping.yaml` must be trimmed. The README prescribes
+keeping only `CAM_FRONT` for runs with Autoware attached (README, Step 4.6).
 
 Separately, CARLA on Town05 with Autoware attached is simply unstable -
 observed uptimes ranged from 80 s to 53 minutes, median around 9 minutes. Long

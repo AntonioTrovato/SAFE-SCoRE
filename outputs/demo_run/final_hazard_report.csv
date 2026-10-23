@@ -1,4 +1,4 @@
 scenario_id,num_runs,P_collision_pedestrian,P_collision_vehicle,P_collision_static,P_red_light,P_stop_sign,P_off_road,P_lane_invasion,S_collision_pedestrian,S_collision_vehicle,S_collision_static,S_red_light,S_stop_sign,S_off_road,S_lane_invasion,R_collision_pedestrian,R_collision_vehicle,R_collision_static,R_red_light,R_stop_sign,R_off_road,R_lane_invasion,acceptance_threshold_collision_pedestrian,acceptance_threshold_collision_vehicle,acceptance_threshold_collision_static,acceptance_threshold_red_light,acceptance_threshold_stop_sign,acceptance_threshold_off_road,acceptance_threshold_lane_invasion,is_non_acceptable
-common20_1,3,0.0,0.3333,0.0,1.0,0.0,0.0,0.0,0.5,0.6,0.65,0.7,0.8,0.9,0.85,0.0,0.2,0.0,0.7,0.0,0.0,0.0,0.2,0.2,0.2,0.2,0.2,0.2,0.2,True
-common30_1,3,0.0,0.0,0.0,0.6667,0.0,0.0,0.0,0.5,0.6,0.65,0.7,0.8,0.9,0.85,0.0,0.0,0.0,0.4667,0.0,0.0,0.0,0.2,0.2,0.2,0.2,0.2,0.2,0.2,True
+common20_1,3,0.0,0.3333,0.0,0.3333,0.3333,0.0,0.0,0.5,0.6,0.65,0.7,0.8,0.9,0.85,0.0,0.2,0.0,0.2333,0.2667,0.0,0.0,0.2,0.2,0.2,0.2,0.2,0.2,0.2,True
+common30_1,3,0.0,0.0,0.0,1.0,0.0,0.0,0.0,0.5,0.6,0.65,0.7,0.8,0.9,0.85,0.0,0.0,0.0,0.7,0.0,0.0,0.0,0.2,0.2,0.2,0.2,0.2,0.2,0.2,True
 crash_apple_082321,1,0.0,1.0,0.0,0.0,0.0,0.0,0.0,0.5,0.6,0.65,0.7,0.8,0.9,0.85,0.0,0.6,0.0,0.0,0.0,0.0,0.0,0.2,0.2,0.2,0.2,0.2,0.2,0.2,True

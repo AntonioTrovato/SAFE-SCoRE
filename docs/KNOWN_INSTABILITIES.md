@@ -42,9 +42,9 @@ Every dump carries the same signature:
 Unhandled Exception: EXCEPTION_ACCESS_VIOLATION
 ```
 
-**Cause:** unknown, inside the Unreal engine. The repo already documented an
-access violation in the landscape renderer for repeated map reloads; this looks
-like the same class of fault but occurs without reloading.
+**Cause:** unknown, inside the Unreal engine. It looks like the same class of
+fault as the access violation on map reloads (§1.3), but it occurs without
+reloading.
 
 **Mitigation:** none available - only automatic restart and retry. This is the
 single largest limit on unattended suite length.
@@ -72,8 +72,11 @@ four cameras still survives (2000 ticks / 100 simulated seconds).
 Town01 runs the full six-camera kit at 1600x900 indefinitely, so it is specific
 to Town05.
 
+**When executing the pipeline, the crash happens already with two or more cameras.**
+
 **Mitigation:** trim `enabled_sensors` in the bridge's
-`config/sensor_mapping.yaml`. **Consequence for results:** with cameras
+`config/sensor_mapping.yaml`. The README prescribes keeping only `CAM_FRONT` for
+runs with Autoware attached (README, Step 4.6). **Consequence for results:** with cameras
 reduced, traffic-light recognition degrades, so `red_light` hazard counts in
 Autoware mode must not be trusted without checking.
 
@@ -338,7 +341,7 @@ autonomous mode:
 greyed out. Indistinguishable from a genuine planning failure.
 
 **Cause:** hard-killed nodes stay advertised in CycloneDDS. Our
-`config/cyclonedds.xml` uses `<ParticipantIndex>none</ParticipantIndex>` - a
+`~/cyclonedds.xml` (in WSL) uses `<ParticipantIndex>none</ParticipantIndex>` - a
 *Jazzy* workaround - which on Humble lets dead participants linger.
 
 **Cure:** `wsl --shutdown`. Verified: 290/187 before, **186/186 after**, and

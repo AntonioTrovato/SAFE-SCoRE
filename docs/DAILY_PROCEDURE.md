@@ -2,8 +2,9 @@
 
 Starting and stopping the environment by hand, once it is installed.
 
-> **You may not need this.** `python -m src.runner.run_experiment --driver autoware`
-> starts CARLA and Autoware itself, checks them, and restarts them on a crash.
+> **You may not need this.** `python -m src.runner.run_experiment --driver autoware`,
+> given `--carla_exe` and `--autoware_map_path`, starts CARLA and Autoware itself,
+> checks them, and restarts them on a crash.
 > This procedure is for driving the stack manually — debugging, demos, or
 > exploring in RViz.
 
@@ -70,8 +71,16 @@ ip route show default | awk '{print $3}'
 grep -n 'name="host"' ~/autoware/src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
 ```
 
-If they differ, edit that line to the live address and rebuild just that
-package:
+If they differ, set that line to the live address (this replaces the value of the
+`default` or `value` attribute on the `name="host"` line with the address printed
+by the first command):
+
+```bash
+sed -i -E "/name=\"host\"/ s/(default|value)=\"[^\"]*\"/\1=\"$(ip route show default | awk '{print $3}')\"/" ~/autoware/src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
+```
+
+Check that the line now shows the live address (rerun the `grep` above), then
+rebuild just that package:
 
 ```bash
 cd ~/autoware && colcon build --packages-select autoware_carla_interface
@@ -222,7 +231,7 @@ Re-cloning Autoware silently discards the local patches. Verify all four:
 grep -n "CARLA_EXTERNAL_TICK" ~/autoware/src/universe/autoware_universe/simulator/autoware_carla_interface/src/autoware_carla_interface/carla_autoware.py
 grep -n "max_vel:" ~/autoware/src/launcher/autoware_launch/autoware_launch/config/planning/scenario_planning/common/common.param.yaml
 grep -n 'name="host"' ~/autoware/src/universe/autoware_universe/simulator/autoware_carla_interface/launch/autoware_carla_interface.launch.xml
-grep -n "autoware_carla_interface.launch.xml" ~/autoware/src/launcher/autoware_launch/autoware_launch/launch/e2e_simulator.launch.xml
+grep -n "launch/autoware_carla_interface.launch.xml" ~/autoware/src/launcher/autoware_launch/autoware_launch/launch/e2e_simulator.launch.xml
 ```
 
 Three of the four fail silently when missing: the stack starts, RViz looks
